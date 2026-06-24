@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaxipm"
+version = "0.0.1"
+authors = [
+    {name="John Viljoen", email="johnviljoen2@gmail.com"}
+]
+license = {text="MIT"}
+dependencies = [
+    "matplotlib",
+    "tqdm",
+    "jax[cuda13]==0.8.0",
+    "equinox"
+]
+
+
+

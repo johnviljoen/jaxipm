@@ -1,0 +1,15 @@
+{
+    "N_quads": [2, 4],
+    "N_horizon": 30,
+    "Ts": 0.1,
+    "N_RUNS_seq": 50,
+    "N_RUNS_jaxipm": 75,
+    "batch_size": 75,
+    "R": 3.0,
+    "quad_radius": 0.2,
+    "safety": 0.1,
+    "xy_margin": 2.0,
+    "z_bound": 1.5,
+    "vel_rate_bound": 10.0,
+    "hot_restart": [true, false]
+}

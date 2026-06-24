@@ -1,0 +1,21 @@
+{
+    "mB": 1.2,
+    "dxm": 0.16,
+    "dym": 0.16,
+    "dzm": 0.01,
+    "IB00": 0.0123,
+    "IB11": 0.0123,
+    "IB22": 0.0224,
+    "IRzz": 2.7e-5,
+    "Cd": 0.1,
+    "kTh": 1.076e-5,
+    "kTo": 1.632e-7,
+    "minThr": 0.4,
+    "maxThr": 36.72,
+    "minWmotor": 75,
+    "maxWmotor": 925,
+    "tau": 0.015,
+    "kp": 1.0,
+    "damp": 1.0,
+    "usePrecession": true
+}

@@ -1,0 +1,22 @@
+{
+    "x_lb": [
+        -10.0, -10.0, -10.0, null, null, null, null, -10.0, -10.0, -10.0, -10.0, -10.0, -10.0
+    ],
+    "x_ub": [
+        10.0, 10.0, 10.0, null, null, null, null, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0
+    ],
+    "obstacles": [
+        {"xc": 1.0, "yc": 1.0, "r": 0.5},
+        {"xc": 1.0, "yc": 3.0, "r": 0.5},
+        {"xc": 3.0, "yc": 1.0, "r": 0.5},
+        {"xc": 3.0, "yc": 3.0, "r": 0.75}
+    ],
+    "quad_radius": 0.2,
+    "N_horizon": 30,
+    "Ts": 0.1,
+    "N_RUNS_seq": 80,
+    "N_RUNS_jaxipm": 2000,
+    "batch_size": 500,
+    "init_angles": [90, 180],
+    "hot_restart": [true, false]
+}
