@@ -122,6 +122,11 @@ if __name__ == "__main__":
     with open("jaxipm/params.json") as f:
         p = json.load(f)
 
+    # The fan+iters paper figure (analyze_results.py) needs per-solve IPM
+    # iteration counts, which jaxipm only records when DEBUG_MODE enables the
+    # throughput iter_buffer (otherwise iters are saved as -1).
+    p["DEBUG_MODE"] = True
+
     # import os
     # if os.environ.get("HOT_RESTART", "1") == "0":
     #     p["hot_restarting"] = False

@@ -1,6 +1,6 @@
 # jaxipm
 
-We present our jaxipm work from our paper: Scaling Nonlinear Optimization: Many Problems, One GPU
+We present our jaxipm work from our paper: [Scaling Nonlinear Optimization: Many Problems, One GPU](https://arxiv.org/abs/2606.26341)
 
 # Installation
 
