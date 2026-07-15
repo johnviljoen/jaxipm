@@ -15,6 +15,7 @@ completed (e.g. step_aff_full / soc_taken are currently not emitted by mk2).
 import os
 import numpy as np
 import jax.numpy as jnp
+from spineax import cudss
 
 from jaxipm.structures import (
     OptimizationState,
@@ -359,10 +360,16 @@ def _empty_iterate(cp):
 # --------------------------------------------------------------------------- #
 # Main entry point                                                             #
 # --------------------------------------------------------------------------- #
-def load_state(iter_num, cp, base_dir=None):
+def load_state(iter_num, cp, base_dir=None, kkt_token=None, ls_token=None):
     """Reconstruct an OptimizationState from ``<base_dir>/iter_<iter_num>/``.
 
     base_dir defaults to the module-level ``save_dir`` ("ipopt_logs").
+
+    kkt_token/ls_token: the LIVE spineax FactorTokens from the running jaxipm
+    state (IPOPT logs nothing token-shaped). REQUIRED whenever the loaded
+    state is injected into post_process or tree-mapped against a jaxipm state
+    (pytree structures must match); may stay None for read-only diagnostics
+    that never touch ic.token / ls_token.
     """
     base = base_dir if base_dir is not None else save_dir
     d = f"{base}/iter_{iter_num}"
@@ -673,12 +680,14 @@ def load_state(iter_num, cp, base_dir=None):
         inertia=inertia,
         # debug-only in jaxipm; IPOPT doesn't log it -> zeros of the KKT-triu length
         perturbed_data=jnp.zeros(cp.nnz_triu),
+        # live registry handle from the running state (IPOPT logs no tokens)
+        token=kkt_token,
     )
 
     # ---- assemble. Save slots = current state (regular path); resto-entry save
     # slots are an internal/deferred concern (see LOGGING_SCHEMA.md §5). ----
     return OptimizationState(
-        it=it, cqpr=cqpr, cqpo=cqpo, fl=fl, wd=wd, ls=ls, ic=ic, adfs=adfs,
+        it=it, cqpr=cqpr, cqpo=cqpo, fl=fl, wd=wd, ls=ls, ic=ic, ls_token=ls_token, adfs=adfs,
         mu=mu, tau=tau, mu_max=mu_max,
         init_dual_inf=init_dual_inf, init_primal_inf=init_primal_inf,
         saved_fl=fl, saved_wd=wd, saved_ls=ls, saved_ic=ic, saved_adfs=adfs,
@@ -775,9 +784,16 @@ def analyze_diff(jaxipm_state, ipopt_state, rtol=1e-10, atol=1e-10, verbose_skip
             "(structures.py:321); IPOPT logs real eigenvalue counts. The perturbation "
             "decision that flows from inertia (ic.dxs/ic.dcd) IS compared",
         "ic.perturbed_data":
-            "jaxipm holds the perturbed KKT-triu values fed to linear_solve; IPOPT "
+            "jaxipm holds the perturbed KKT-triu values fed to the KKT solve; IPOPT "
             "doesn't log its matrix (loader zero-fills). Transitively validated: ic.dxs/"
             "ic.dcd compared + cqpo.step_aug validated => same operator on solved subspace",
+        "ic.token":
+            "spineax FactorToken (registry id + zero-copy CSR refs), not an algorithmic "
+            "quantity; IPOPT has no analog (loader mirrors the live token). The factorized "
+            "operator is validated transitively via ic.dxs/ic.dcd + cqpo.step_aug",
+        "ls_token":
+            "spineax FactorToken for the LS-multiplier system; fully re-factorized before "
+            "every solve, outcome validated via cqpr.y_c_init/y_d_init",
         "ic.jac_degen":
             "inertia-correction degeneracy bookkeeping; jaxipm's linear solver cannot "
             "report zero-eigenvalue inertia (assumes zero), so this flag differs from "
@@ -1314,8 +1330,8 @@ if __name__ == "__main__":
                 print(f"  (no IPOPT iter_{kdx + 1} dump — IPOPT log ends; "
                       "comparison stops here)")
                 break
-            ip_state_f = load_state(kdx, cp)
-            ip_next_f = load_state(kdx + 1, cp)
+            ip_state_f = load_state(kdx, cp, kkt_token=state_f.ic.token, ls_token=state_f.ls_token)
+            ip_next_f = load_state(kdx + 1, cp, kkt_token=state_f.ic.token, ls_token=state_f.ls_token)
             ip_cmp_f = eqx.tree_at(
                 lambda t: (
                     t.it,
@@ -1479,14 +1495,14 @@ if __name__ == "__main__":
         # IPOPT's cold start). Stop once IPOPT has no iter_<idx+1> dump.
         if not os.path.isdir(os.path.join(save_dir, f"iter_{idx + 1}")):
             break
-        ipopt_next = load_state(idx + 1, cp)
+        ipopt_next = load_state(idx + 1, cp, kkt_token=orig.ic.token, ls_token=orig.ls_token)
 
         # Comparison (unchanged split model): `result` carries THIS iteration's
         # search direction + line search computed FROM IPOPT[idx]
         # (cqpr/cqpo/ls/wd/mu == IPOPT iter idx); result.it is the accepted trial
         # point (== IPOPT iter idx+1). Unify the IPOPT comparison state: `it` from
         # iter idx+1, every other sub-struct from iter idx.
-        ipopt_state = load_state(idx, cp)                 # iter-idx, regular .it
+        ipopt_state = load_state(idx, cp, kkt_token=orig.ic.token, ls_token=orig.ls_token)  # iter-idx, regular .it
         # The filter-rejection counter (+ its flag) advances DURING the line search
         # (FilterLSAcceptor increments it at the end of a successful acceptability
         # check, IpFilterLSAcceptor.cpp:443-456), but IPOPT's ls.txt dump happens in
@@ -1534,7 +1550,7 @@ if __name__ == "__main__":
                   "compared against IPOPT's logged SOC attempt data.")
 
         # ---- KKT-residual probe for step divergences (regular mode only) ----
-        # cqpo.rhs_aug/step_aug hold the EXACT (rhs, x) pair of cp.linear_solve
+        # cqpo.rhs_aug/step_aug hold the EXACT (rhs, x) pair of the KKT solve
         # (quantities.py ~1397: rhs_aug=rhs, step_aug=step, "just for debugging").
         # Assemble K from the solver's upper-tri pattern (cp.coo_indices) + the
         # perturbed values actually factorized (result.ic.perturbed_data),
@@ -1640,37 +1656,19 @@ if __name__ == "__main__":
                 _x_lu = jnp.linalg.solve(_K, _rhs_aff)
                 print(f"      dense-LU(aff): max|x|={_mx(_x_lu):.3e} res={_res(_x_lu,_rhs_aff):.3e}"
                       f" ||x_lu - aff_ipopt||inf={_mx(_x_lu - _aff_i):.3e}")
-                # cuDSS re-solve sweep on the CURRENT factorization (refac=0): if the
-                # ir=0 solve is sane and the residual GROWS with ir, IR is diverging.
-                # cp.linear_solve is ft.partial(CuDSSSolver_instance, ...); .func is
-                # the instance, callable with explicit signals.
-                _i32 = lambda _v: jnp.array([_v], dtype=jnp.int32)
-                for _ir in (0, 1, 5, 10, 100):
-                    _xs = jnp.asarray(cp.linear_solve.func(
-                        _rhs_aff, _kdata, refactorize_signal=_i32(0),
-                        solve_signal=_i32(1), ir_nsteps_signal=_i32(_ir))[0]).flatten()
-                    print(f"      cuDSS re-solve(aff)    ir={_ir:3d}:"
-                          f" max|x|={_mx(_xs):.3e} res={_res(_xs,_rhs_aff):.3e}")
-                # fresh refactorize + solve (handle state is washed out by the next
-                # pass's post_process, which refactorizes at the next iterate anyway)
-                for _ir in (0, 5, 100):
-                    _xs = jnp.asarray(cp.linear_solve.func(
-                        _rhs_aff, _kdata, refactorize_signal=_i32(1),
-                        solve_signal=_i32(1), ir_nsteps_signal=_i32(_ir))[0]).flatten()
-                    print(f"      cuDSS refac+solve(aff) ir={_ir:3d}:"
-                          f" max|x|={_mx(_xs):.3e} res={_res(_xs,_rhs_aff):.3e}")
+                # single cuDSS solve-quality probe against the live factorization
+                # (the old ir-sweep diagnostics hunted the cuDSS-internal-IR
+                # divergence, which is root-caused and fixed by JAX-side IR)
+                _xs = jnp.asarray(cudss.solve(
+                    orig.ic.token, _rhs_aff, ir_nsteps=cp.p["ir_nsteps"])).flatten()
+                print(f"      cuDSS re-solve(aff) ir={cp.p['ir_nsteps']}:"
+                      f" max|x|={_mx(_xs):.3e} res={_res(_xs,_rhs_aff):.3e}")
                 # main step on the exact logged (rhs_aug, step_aug) pair for context
                 _rhs_m = jnp.asarray(result.cqpo.rhs_aug).flatten()
                 _x_lu_m = jnp.linalg.solve(_K, _rhs_m)
                 print(f"      dense-LU(main): max|x|={_mx(_x_lu_m):.3e}"
                       f" res={_res(_x_lu_m,_rhs_m):.3e}"
                       f" (jax step_aug max={_mx(jnp.asarray(result.cqpo.step_aug)):.3e})")
-                for _ir in (0, 100):
-                    _xs = jnp.asarray(cp.linear_solve.func(
-                        _rhs_m, _kdata, refactorize_signal=_i32(0),
-                        solve_signal=_i32(1), ir_nsteps_signal=_i32(_ir))[0]).flatten()
-                    print(f"      cuDSS re-solve(main)   ir={_ir:3d}:"
-                          f" max|x|={_mx(_xs):.3e} res={_res(_xs,_rhs_m):.3e}")
 
         # ===================== RE-SEED (FULL STATE) =========================
         # Inject IPOPT's COMPLETE state — but with the SAME pre/post split the
@@ -1800,7 +1798,7 @@ if __name__ == "__main__":
                 return float(jnp.asarray(v).squeeze())
             # ---- (A) freeze validation vs the pre-resto regular IPOPT state ----
             if resto_entry_idx is not None:
-                ipe = load_state(resto_entry_idx, cp)
+                ipe = load_state(resto_entry_idx, cp, kkt_token=orig.ic.token, ls_token=orig.ls_token)
                 print(f"  [A] entry-freeze vs IPOPT[{resto_entry_idx}] (jaxipm saved_* | ipopt):")
                 print(f"      saved_mu            {_f(orig.saved_mu):.10e} | {_f(ipe.mu):.10e}")
                 print(f"      saved_tau           {_f(orig.saved_tau):.10e} | {_f(ipe.tau):.10e}")

@@ -126,7 +126,7 @@ def main():
         raise SystemExit("need both jaxipm_2 and jaxipm_4 results in logs/ "
                          "(run `python -m tests.quad_multi_swap.jaxipm_multi_swap` first)")
 
-    cmap = plt.cm.get_cmap("tab10")
+    cmap = plt.get_cmap("tab10")
     fig, axes = plt.subplots(1, 2, figsize=(12, 6), squeeze=False)
     axes = axes[0]
     for ax, r in zip(axes, valid):

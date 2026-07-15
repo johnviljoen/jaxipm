@@ -11,6 +11,7 @@ for Pardisos inertia correction."""
 import jax
 import jax.numpy as jnp
 import equinox as eqx
+from spineax import cudss
 
 def _compute_DcR_DdR_diag(Sigma_nc, Sigma_pc, Sigma_nd, Sigma_pd, dxs):
     """Compute DcR and DdR diagonal values for resto reduced system.
@@ -100,11 +101,14 @@ def solve_with_inertia_correction(csr_lhs, rhs, ic, cp, fl, resto, Sigma_nc, Sig
     ic = eqx.tree_at(lambda t: (t.perturbed_data, t.dxs_old, t.dxs, t.hess_degen, t.degen_iters),
                         ic, (perturbed_data, dxs_old, dxs_init, hess_degen_pre, degen_iters))
 
+    expected_pos = cp.nx + cp.nyd
+    expected_neg = cp.nyc + cp.nyd
+
     def cond(carry):
-        dxs, dxs_old, data, rhs_vec, sol, inertia, first = carry
-        return ((inertia[0] != cp.nx+cp.nyd) | (inertia[1] != cp.nyc+cp.nyd)) & (dxs <= cp.p["max_hessian_perturbation"])
+        dxs, dxs_old, data, rhs_vec, inertia, first, token = carry
+        return ((inertia[0] != expected_pos) | (inertia[1] != expected_neg)) & (dxs <= cp.p["max_hessian_perturbation"])
     def body(carry):
-        dxs, dxs_old, data, rhs_vec, sol, inertia, first = carry
+        dxs, dxs_old, data, rhs_vec, inertia, first, token = carry
         dxs_new = jax.lax.cond(
             first,
             lambda: dxs,
@@ -115,32 +119,45 @@ def solve_with_inertia_correction(csr_lhs, rhs, ic, cp, fl, resto, Sigma_nc, Sig
                 lambda: dxs * jax.lax.cond((dxs_old == 0) | (1e5 * dxs_old < dxs),
                                             lambda: cp.p["perturb_inc_fact_first"], lambda: cp.p["perturb_inc_fact"]))
         )
-        data = data.at[cp.dxs_diag_indices].add(dxs_new - dxs)
+        data_new = data.at[cp.dxs_diag_indices].add(dxs_new - dxs)
         # For resto mode, update DcR/DdR diagonal when dxs changes
         DcR_diag_new, DdR_diag_new = _compute_DcR_DdR_diag(Sigma_nc, Sigma_pc, Sigma_nd, Sigma_pd, dxs_new)
-        data = jax.lax.cond(
+        data_new = jax.lax.cond(
             resto,
             lambda d: d.at[cp.dc_diag_indices].set(DcR_diag_new).at[cp.dd_diag_indices].set(DdR_diag_new),
             lambda d: d,
-            data
+            data_new
         )
         # For resto mode, update RHS (rhs_cR and rhs_dR depend on sigma_tilde_inv)
         rhs_cR_negated_new, rhs_dR_negated_new = _compute_rhs_cR_dR_negated(
             Sigma_nc, Sigma_pc, Sigma_nd, Sigma_pd, dxs_new, rhs_intermediates)
-        rhs_vec = jax.lax.cond(
+        rhs_new = jax.lax.cond(
             resto,
             lambda r: r.at[rhs_cR_start:rhs_cR_start+cp.nyc].set(rhs_cR_negated_new).at[rhs_dR_start:rhs_dR_start+cp.nyd].set(rhs_dR_negated_new),
             lambda r: r,
             rhs_vec
         )
-        _, inertia = cp.refactorize(rhs_vec, data)
-        return dxs_new, dxs_old, data, rhs_vec, sol, inertia, False
+        # MASKED-DATA pattern: under vmap this body keeps running (for the whole
+        # block) while ANY element's cond holds, and the refactorize below is one
+        # physical block call on whatever data we hand it — cuDSS is blind to
+        # vmap's masking. Freezing dxs/data/rhs at THIS element's own convergence
+        # keeps the physical factors identical to the carried data, so no
+        # post-loop refactorize is needed (and the same code is correct
+        # unvmapped, where `done` is scalar). See spineax token_design.md §9.
+        done = (inertia[0] == expected_pos) & (inertia[1] == expected_neg)
+        dxs_next = jnp.where(done, dxs, dxs_new)
+        data = jnp.where(done, data, data_new)
+        rhs_vec = jnp.where(done, rhs_vec, rhs_new)
+        token = cudss.refactorize(token, data)
+        inertia = cudss.inertia(cudss.query(token))
+        return dxs_next, dxs_old, data, rhs_vec, inertia, False, token
 
-    init = (ic.dxs, ic.dxs_old, ic.perturbed_data, perturbed_rhs, jnp.zeros([cp.nx+cp.nyd*2+cp.nyc]), jnp.int32([0, 0]), True)
-    dxs, _, perturbed_data, rhs_vec, sol, _, _ = jax.lax.while_loop(cond, body, init)
-    # if cp.p["DEBUG_MODE"]:
-    #     jax.debug.print("IC solution: {sol}, has_nan: {has_nan}", sol=sol, has_nan=jnp.any(jnp.isnan(sol)))
-    sol, _ = cp.refactorize_and_linear_solve(rhs_vec, perturbed_data)
+    init = (ic.dxs, ic.dxs_old, ic.perturbed_data, perturbed_rhs, jnp.int32([0, 0]), True, ic.token)
+    dxs, _, perturbed_data, rhs_vec, _, _, token = jax.lax.while_loop(cond, body, init)
+    # NO post-loop refactorize: the masked-data pattern above guarantees the
+    # registry factors == perturbed_data == token.values, so a plain solve
+    # suffices (one full refactorization removed per IPM iteration).
+    sol = cudss.solve(token, rhs_vec)
     step = sol[:, None]
     test_status = jax.lax.cond(dxs > 0, lambda: jnp.array(3), lambda: jnp.array(1))
     # Now finalize hess_degen: set to 2 (DEGENERATE) only if dxs>0 and at degen limit
@@ -150,8 +167,8 @@ def solve_with_inertia_correction(csr_lhs, rhs, ic, cp, fl, resto, Sigma_nc, Sig
         (dxs > 0) & at_degen_limit & (hess_degen_pre == 0),
         lambda: jnp.array(2),
         lambda: hess_degen_pre)
-    ic = eqx.tree_at(lambda t: (t.dxs, t.perturbed_data, t.test_status, t.hess_degen),
-                     ic, (dxs, perturbed_data, test_status, hess_degen_final))
+    ic = eqx.tree_at(lambda t: (t.dxs, t.perturbed_data, t.test_status, t.hess_degen, t.token),
+                     ic, (dxs, perturbed_data, test_status, hess_degen_final, token))
     return step, ic
 
 # currently redundant until a batched cholesky with per element graceful failures
@@ -230,12 +247,12 @@ def solve_with_inertia_correction_condensed(
                         ic, (perturbed_data, dxs_old, dxs_init, hess_degen_pre, degen_iters))
 
     def cond(carry):
-        dxs, dxs_old, data, rhs_vec, sol, inertia, first = carry
+        dxs, dxs_old, data, rhs_vec, inertia, first, token = carry
         # SPD: ALL eigenvalues must be positive
         return (inertia[0] != nx) & (dxs <= cp.p["max_hessian_perturbation"])
 
     def body(carry):
-        dxs, dxs_old, data, rhs_vec, sol, inertia, first = carry
+        dxs, dxs_old, data, rhs_vec, inertia, first, token = carry
         # Same dxs escalation logic as augmented IC
         dxs_new = jax.lax.cond(
             first,
@@ -259,19 +276,26 @@ def solve_with_inertia_correction_condensed(
         # Re-condense RHS (for resto where RHS depends on dxs)
         rhs_new, _ = condense_rhs_fn(mod_rhs_x, mod_rhs_s, rhs_d_all, Sigma_s_pert_new, diag_buffer_new, Jd_data)
 
-        _, inertia = cp.refactorize(rhs_new, data_new)
-        return dxs_new, dxs_old, data_new, rhs_new, sol, inertia, False
+        # MASKED-DATA pattern (see solve_with_inertia_correction)
+        done = inertia[0] == nx
+        dxs_next = jnp.where(done, dxs, dxs_new)
+        data = jnp.where(done, data, data_new)
+        rhs_vec = jnp.where(done, rhs_vec, rhs_new)
+        token = cudss.refactorize(token, data)
+        inertia = cudss.inertia(cudss.query(token))
+        return dxs_next, dxs_old, data, rhs_vec, inertia, False, token
 
-    init = (ic.dxs, ic.dxs_old, ic.perturbed_data, perturbed_rhs, jnp.zeros(nx), jnp.int32([0, 0]), True)
-    dxs, _, perturbed_data, rhs_vec, sol, _, _ = jax.lax.while_loop(cond, body, init)
+    init = (ic.dxs, ic.dxs_old, ic.perturbed_data, perturbed_rhs, jnp.int32([0, 0]), True, ic.token)
+    dxs, _, perturbed_data, rhs_vec, _, _, token = jax.lax.while_loop(cond, body, init)
 
-    sol, _ = cp.refactorize_and_linear_solve(rhs_vec, perturbed_data)
+    # masked-data pattern: registry factors == perturbed_data, plain solve only
+    sol = cudss.solve(token, rhs_vec)
     step = sol[:, None]
     test_status = jax.lax.cond(dxs > 0, lambda: jnp.array(3), lambda: jnp.array(1))
     hess_degen_final = jax.lax.cond(
         (dxs > 0) & at_degen_limit & (hess_degen_pre == 0),
         lambda: jnp.array(2),
         lambda: hess_degen_pre)
-    ic = eqx.tree_at(lambda t: (t.dxs, t.perturbed_data, t.test_status, t.hess_degen),
-                     ic, (dxs, perturbed_data, test_status, hess_degen_final))
+    ic = eqx.tree_at(lambda t: (t.dxs, t.perturbed_data, t.test_status, t.hess_degen, t.token),
+                     ic, (dxs, perturbed_data, test_status, hess_degen_final, token))
     return step, ic

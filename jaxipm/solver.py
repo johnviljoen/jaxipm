@@ -4,6 +4,7 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from spineax import cudss
 
 from jaxipm.search import execute_search, post_process
 
@@ -38,6 +39,39 @@ def solve(cp, state, max_iter=None, fill=None, debug=False):
         return state, term, i + 1
     state, term, _ = jax.lax.while_loop(cond, body, (state, jnp.array([[TerminationCode.CONTINUE]]), 0))
     return state, term
+
+def make_batch_state(cp, states):
+    """Stack single-problem states into a batched state and RE-MINT the solver
+    tokens.
+
+    Stacking alone leaves B DISTINCT registry ids in the stacked tokens, which
+    the vmapped spineax handlers reject ("stacked distinct tokens"). A batch
+    must be ONE block-diagonal registry entry, minted by vmap(analyze), whose
+    id is broadcast across the batch. The KKT token is re-minted from each
+    state's last-factorized values (token.values) and fully factorized; the LS
+    token is analyze-only (it is factorized before every solve). saved_ic gets
+    the same re-minted KKT token so resto save/restore stays consistent.
+    """
+    def stack_leaves(*leaves):
+        if eqx.is_array(leaves[0]):
+            return jnp.stack(leaves)
+        return leaves[0]
+    batch_state = jax.tree.map(stack_leaves, *states)
+
+    batch_size = len(states)
+    kkt_values = batch_state.ic.token.values  # (B, nnz) last-factorized KKT values
+    kkt_tokens = jax.vmap(lambda v: cudss.factorize(
+        cudss.analyze(v, cp.solver_indptr, cp.solver_indices, mtype_id=1, mview_id=1), v
+    ))(kkt_values)
+    ls_tokens = jax.vmap(lambda v: cudss.analyze(
+        v, cp.ls_indptr, cp.ls_indices, mtype_id=1, mview_id=1
+    ))(jnp.zeros([batch_size, cp.ls_nnz_triu]))
+
+    return eqx.tree_at(
+        lambda s: (s.ic.token, s.saved_ic.token, s.ls_token),
+        batch_state,
+        (kkt_tokens, kkt_tokens, ls_tokens),
+    )
 
 def solve_batched(cp, batch_state, max_iter=None):
     fill = jax.tree.map(lambda x: x[0], batch_state)
@@ -304,15 +338,7 @@ if __name__ == "__main__":
     N = 2000
     max_solves = 10000
 
-    def stack_states_tp(states):
-        def stack_leaves(*leaves):
-            if eqx.is_array(leaves[0]):
-                return jnp.stack(leaves)
-            else:
-                return leaves[0]
-        return jax.tree.map(stack_leaves, *states)
-
-    batch_tp = stack_states_tp([state] * N)
+    batch_tp = make_batch_state(cp, [state] * N)
 
     rng_key = jax.random.PRNGKey(0)
     _solve_throughput = eqx.filter_jit(solve_throughput, donate="none")

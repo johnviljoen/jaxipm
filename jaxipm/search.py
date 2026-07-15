@@ -23,6 +23,7 @@ from equinox.internal import ω
 import equinox as eqx
 import jaxipm.utils.sparse_utils as spu
 import jax.experimental.sparse as jsparse
+from spineax import cudss
 
 # Debug logging for backtracking line search
 _LS_DEBUG_DIR = Path("tmp/batch_solve_basic_nmpc/ls_debug")
@@ -459,7 +460,7 @@ def soc_step(state, cp):
 
     # unified cuDSS call with iterative refinement!
     rhs = jnp.where(resto, rrhs_red_soc, rhs_aug_soc)
-    step = cp.linear_solve(rhs.flatten(), state.ic.perturbed_data)[0][:, None]
+    step = cudss.solve(state.ic.token, rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
 
     # resto / reg
     rstep_aug_soc = cp.nstqfr.kkt.calc_transform_red_to_aug(step, rrhs_soc_full, state.cqpr.Sigma_nc_inv, state.cqpr.Sigma_pc_inv, state.cqpr.Sigma_nd_inv, state.cqpr.Sigma_pd_inv)
@@ -1403,7 +1404,9 @@ def post_process(original_state, result, cp):
 
     rargs, rmu = initialize_resto_args(result, cp)
     rit = initialize_iterate_resto(result.it, cp, rmu, result.cqpr)
-    ric = initialize_inertia_correction_state(cp)
+    # resto entry's fresh ic INHERITS the live KKT token (the resto system
+    # conforms to the same KKT sparsity — one registry entry serves both modes)
+    ric = initialize_inertia_correction_state(cp, result.ic.token)
     rmu = jnp.atleast_2d(rmu)
 
     # --- Init regular: scaling + push_to_interior + mults ---
@@ -1446,7 +1449,7 @@ def post_process(original_state, result, cp):
     ir_x_padded = jnp.vstack([ir_x, jnp.zeros([cp.nyc*2+cp.nyd*2, 1])])
     ir_it = Iterate(ir_x_padded, ir_s, jnp.zeros([cp.nyc,1]), jnp.zeros([cp.nyd,1]),
                     ir_z_L, ir_z_U, ir_v_L, ir_v_U)
-    ir_ic = initialize_inertia_correction_state(cp)
+    ir_ic = initialize_inertia_correction_state(cp, result.ic.token)
     ir_mu = cp.nstqf.calc_avrg_compl(ir_it, cp.nstqf.calc_slacks(ir_it))  # mu = avrg_compl
 
     # only if we are instantiating a new resto do we change the it, ic, mu, args...
@@ -1520,6 +1523,10 @@ def post_process(original_state, result, cp):
     # with saved_* afterwards. (tau/mu_max/init_infs/fl/adfs/ls are restored at
     # their respective selection points further down, for the same reason.)
     mu = jnp.where(exiting, saved_mu, mu)
+    # NOTE: the restored ic carries the resto-entry-frozen token (stale values
+    # leaf, same registry id as the live one — only one KKT entry ever exists
+    # per problem). This is safe because every iteration refactorizes in the
+    # IC loop before it solves, which resyncs factors and token.values.
     ic = jax.lax.cond(exiting, lambda: saved_ic, lambda: ic)
 
     reg_hess_f_unpadded = cp.nstqf.calc_hess_f(it.x[:cp.nx], *f_args)
@@ -1732,7 +1739,8 @@ def post_process(original_state, result, cp):
     ls_init_rhs = cp.stqf.calc_ls_mults_RHS(
         jacobians[0], it.z_L[:cp.nxL], it.z_U, it.v_L, it.v_U
     )
-    ls_step = cp.ls_refactorize_and_solve(ls_init_rhs.flatten(), ls_init_csr.data)[0][:, None]
+    ls_token = cudss.factorize(result.ls_token, ls_init_csr.data)
+    ls_step = cudss.solve(ls_token, ls_init_rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
     y_c_ls = ls_step[cp.nx + cp.nyd : cp.nx + cp.nyd + cp.nyc]
     y_d_ls = ls_step[cp.nx + cp.nyd + cp.nyc : cp.nx + cp.nyd + cp.nyc + cp.nyd]
     yinitnrm = jnp.maximum(
@@ -1847,8 +1855,8 @@ def post_process(original_state, result, cp):
     init_primal_inf = jnp.where(exiting, saved_init_primal_inf, init_primal_inf)
     fl = jax.lax.cond(exiting, lambda: saved_fl, lambda: fl)
 
-    # Step 5: Recalculate pre-mu quantities (it, ic, cp, fl, fun_outs, jacobians, hessians, iter_count)
-    cqpr, ic = calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count)
+    # Step 5: Recalculate pre-mu quantities (it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, iter_count)
+    cqpr, ic, ls_token = calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count)
     # clear the flag now we have the LS direction
     fl = eqx.tree_at(
         lambda t: (t.needs_resto_init, t.needs_regular_init),
@@ -2049,7 +2057,7 @@ def post_process(original_state, result, cp):
     # wd is already set above (either restored from saved_wd or kept as result.wd)
 
     processed_result = OptimizationState(
-        it=it, cqpr=cqpr, cqpo=cqpo, fl=fl, wd=wd, ls=ls, ic=ic, adfs=adfs,
+        it=it, cqpr=cqpr, cqpo=cqpo, fl=fl, wd=wd, ls=ls, ic=ic, ls_token=ls_token, adfs=adfs,
         saved_fl=saved_fl, saved_wd=saved_wd, saved_ls=saved_ls, saved_ic=saved_ic,
         saved_adfs=saved_adfs, saved_mu=saved_mu, saved_tau=saved_tau, saved_mu_max=saved_mu_max,
         saved_init_dual_inf=saved_init_dual_inf, saved_init_primal_inf=saved_init_primal_inf,

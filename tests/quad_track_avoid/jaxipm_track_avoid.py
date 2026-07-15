@@ -158,7 +158,7 @@ if __name__ == "__main__":
     jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
 
     from jaxipm.utils.problem_format_utils import custom_to_cyipopt_format
-    from jaxipm.solver import solve_throughput
+    from jaxipm.solver import solve_throughput, make_batch_state
     from jaxipm.initialization import initialize_common_problem, initialize_problem_regular
 
     N_horizon = N_HORIZON
@@ -223,15 +223,9 @@ if __name__ == "__main__":
         print("--- Testing solve_throughput ---")
         max_solves = N_RUNS
 
-        def stack_states_tp(states):
-            def stack_leaves(*leaves):
-                if eqx.is_array(leaves[0]):
-                    return jnp.stack(leaves)
-                else:
-                    return leaves[0]
-            return jax.tree.map(stack_leaves, *states)
-
-        batch_tp = stack_states_tp([state] * N_batch)
+        # make_batch_state stacks AND re-mints the spineax tokens (stacked
+        # single-state tokens hold distinct registry ids, which vmap rejects)
+        batch_tp = make_batch_state(cp, [state] * N_batch)
 
         # Inject the first N_batch unique (x0, xr) into the per-slot args.
         # Framework layout:

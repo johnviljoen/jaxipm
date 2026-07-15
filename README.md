@@ -4,6 +4,26 @@ We present our jaxipm work from our paper: [Scaling Nonlinear Optimization: Many
 
 # Installation
 
+Requires Linux, an NVIDIA GPU, and CUDA 13. jaxipm uses [spineax](https://github.com/johnviljoen/spineax) (token-based cuDSS bindings) for its batched sparse KKT solves, and [jax2sympy](https://github.com/johnviljoen/jax2sympy) for sparse symbolic derivatives.
+
+```bash
+conda create -n jaxipm python=3.14 -y
+conda activate jaxipm
+
+# build tooling (spineax compiles a small CUDA extension)
+pip install scikit-build-core cmake ninja nanobind
+
+# latest jax + cuDSS >= 0.8, then spineax and jax2sympy from source
+pip install "jax[cuda13]" "nvidia-cudss-cu13>=0.8"
+pip install -e /path/to/spineax --no-build-isolation
+pip install -e /path/to/jax2sympy
+
+# jaxipm itself
+pip install -e .
+```
+
+The correctness tests (`tests/correctness/`) additionally need `casadi` and `cyipopt` (the latter built against an IPOPT install) for the IPOPT cross-checks.
+
 
 
 # Research FAQ's

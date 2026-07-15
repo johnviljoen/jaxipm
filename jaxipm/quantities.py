@@ -10,6 +10,8 @@ import numpy as np
 from pathlib import Path
 from equinox.internal import ω
 
+from spineax import cudss
+
 from jaxipm.utils.eqx_utils import filter_select
 import jaxipm.utils.sparse_utils as spu
 # from jaxipm.barrier import calc_quality_function_mu
@@ -1006,7 +1008,7 @@ def generate_shared_trace_functions(general_dims, kkt, p, ls_coo_indices=None, l
     return stqf
 
 # TODO once we rework the initialization
-def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count):
+def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count):
 
     # inertia correction loading workaround ------------------------------------
     # def load_pert_x(iter_count):
@@ -1113,9 +1115,14 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
     ls_init_rhs = cp.stqf.calc_ls_mults_RHS(
         jacobians[0], it.z_L[:cp.nxL], it.z_U, it.v_L, it.v_U
     )
-    ls_step = cp.ls_refactorize_and_solve(ls_init_rhs.flatten(), ls_init_csr.data)[0][:, None]
-    if cp.p["VALIDATION_MODE"] is True:
-        ls_step = cp.ls_linear_solve(ls_init_rhs.flatten(), ls_init_csr.data)[0][:, None]
+    # fresh FULL factorization every iteration (not refactorize): the LS solve
+    # has no inertia-correction safety net around it, and hot restarts would
+    # otherwise reuse pivots chosen for the first problem's x0 forever.
+    # JAX-side iterative refinement in solve() refines correctly in one call —
+    # the old VALIDATION_MODE standalone re-solve existed only for the (fixed)
+    # cuDSS-internal-IR stale-pointer bug.
+    ls_token = cudss.factorize(ls_token, ls_init_csr.data)
+    ls_step = cudss.solve(ls_token, ls_init_rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
     y_c_init = ls_step[cp.nx + cp.nyd : cp.nx + cp.nyd + cp.nyc]
     y_d_init = ls_step[cp.nx + cp.nyd + cp.nyc : cp.nx + cp.nyd + cp.nyc + cp.nyd]
 
@@ -1156,6 +1163,12 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
     # COMMON INERTIA CORRECTION CODE - and common calls to linear solve
     step_aff, ic = solve_with_inertia_correction(csr_lhs, rhs_aff, ic, cp, fl, resto, ic_Sigma_nc, ic_Sigma_pc, ic_Sigma_nd, ic_Sigma_pd, ic_rhs_intermediates)
 
+    if cp.p["VALIDATION_MODE"] is True:
+        # invariant of the masked-data IC pattern: the token's values ARE the
+        # perturbed data the loop factorized (registry factors match both)
+        jax.debug.print("ic token/perturbed_data max|diff| (must be 0): {d}",
+                        d=jnp.max(jnp.abs(ic.token.values - ic.perturbed_data)))
+
     # Recompute Sigma_inv with final ic.dxs for resto transformation (reduced -> aug)
     # IPOPT also uses sigma_tilde_inv = 1/(Sigma + delta_x) in its Solve() for the transformation
     Sigma_nc_inv_final = 1 / jnp.maximum(Sigma_nc + ic.dxs, 1e-20)
@@ -1172,8 +1185,9 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
         (rhs_cen,)  # regular mode doesn't depend on dxs
     )
 
-    # empirically found we have to refactorize one more time to avoid iterative refinement issues...
-    step_cen = cp.linear_solve(rhs_cen_final.flatten(), ic.perturbed_data)[0][:,None]
+    # solve-only against the IC loop's factorization (ic.token.values == the
+    # perturbed data it factorized); JAX-side IR refines against that matrix
+    step_cen = cudss.solve(ic.token, rhs_cen_final.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
 
     if cp.p["VALIDATION_MODE"] is True:
         rrhs_aff_full_final = cp.stqf.calc_vector_to_iterate(cp.nstqfr.kkt.calc_resto_red_pd_RHS_aff(
@@ -1185,7 +1199,7 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
             (rhs_aff,)  # regular mode doesn't depend on dxs
         )
 
-        step_aff = cp.linear_solve(rhs_aff_final.flatten(), ic.perturbed_data)[0][:, None]
+        step_aff = cudss.solve(ic.token, rhs_aff_final.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
     else:
         rrhs_aff_full_final = rrhs_aff_full
 
@@ -1197,13 +1211,9 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
     rstep_cen_full = cp.nstqfr.calc_transform_aug_to_full(it, rstep_cen_aug, rrhs_cen_full_final, slacks, fl)
 
     # regular specific step processing - aug -> full
-
-    # empirically this works with cudss - we must refactorize at least once after factorizing and solving for 
-    # subsequent solves and iterative refinements to work properly at all. If you just
-    # factorize and solve, and reuse that factorization and just solve and iterative refine
-    # in the next step, then the iterative refinement diverges your answer to infinity I have found
-    # in this case at least. Maybe this is a ME problem, but it seems weird behaviour regardless.
-    # step_cen_aug = cp.refactorize_and_linear_solve(rhs_cen.flatten(), ic.perturbed_data)[0][:, None]
+    # (the historical "must refactorize once more or IR diverges" workaround is
+    # gone: it was the cuDSS-internal-IR stale-pointer bug, root-caused and
+    # replaced by JAX-side IR in spineax — see token_design.md §10 step 12)
     step_aff_aug = jnp.vstack([step_aff[:cp.nx], pad, step_aff[cp.nx:]])
     step_cen_aug = jnp.vstack([step_cen[:cp.nx], pad, step_cen[cp.nx:]])
     step_aff_full = cp.nstqf.calc_transform_aug_to_full(it, step_aff_aug, rhs_aff_full, slacks, fl)
@@ -1261,7 +1271,7 @@ def calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities
         y_d_init=y_d_init
     )
 
-    return cqpr, ic
+    return cqpr, ic, ls_token
 
 def calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl):
 
@@ -1284,7 +1294,7 @@ def calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl):
     # 2-way RHS selection: regular or resto (LS handled by dedicated solver in calc_values_pre_mu)
     rhs = jnp.where(fl.in_restoration.squeeze(), rhs_red_resto, rhs_aug_reg)
 
-    step = cp.linear_solve(rhs.flatten(), ic.perturbed_data)[0][:, None]
+    step = cudss.solve(ic.token, rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
 
     step_resto = step
     step_aug_reg = pad_iterate_vector(step)

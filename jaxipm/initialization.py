@@ -1,12 +1,10 @@
-import functools as ft
-
 import equinox as eqx
 import jax
 import jax.experimental.sparse as jsparse
 import jax.numpy as jnp
 from jax2sympy.sparsify import get_sparsity_pattern
 from jax2sympy.sparsify_sym import sparse_jacobian_sym, sparse_hessian_sym
-from spineax.cudss.solver import CuDSSSolver
+from spineax import cudss
 
 # import jaxipm.quantities
 import jaxipm.utils.sparse_utils as spu
@@ -530,21 +528,12 @@ def initialize_common_problem(
     #     solver_csr = condensed_csr
     # else:
 
-    mtype_id = 1  # symmetric indefinite — LDL
+    # KKT/LS solver patterns. mtype_id=1 (symmetric indefinite, LDL),
+    # mview_id=1 (triu). Per-problem FactorTokens are minted from these
+    # patterns in initialize_problem_regular / make_batch_state — the token
+    # (not a solver object) is the handle to the live cuDSS factorization,
+    # threaded through the state (ic.token for KKT, ls_token for LS).
     solver_csr = csr
-    mview_id = 1  # {0: full, 1: triu, 2: tril}
-    device_id = 0
-    _linear_solve = CuDSSSolver(solver_csr.indptr, solver_csr.indices, device_id, mtype_id, mview_id)
-    # just for debugging
-    # jnp.savez("DEBUG_system_structure",
-    #     csr_offsets=csr.indptr, csr_columns=csr.indices, device_id=device_id, mtype_id=mtype_id, mview_id=mview_id
-    # )
-    linear_solve = ft.partial(
-        _linear_solve, 
-        refactorize_signal=jnp.array([0], dtype=jnp.int32), 
-        solve_signal=jnp.array([1], dtype=jnp.int32), 
-        ir_nsteps_signal=jnp.array([p["ir_nsteps"]], dtype=jnp.int32)
-    )
 
     # # Build full symmetric CSR structure from upper triangle for sparse residual computation.
     # # Mirror upper triangle COO indices to get lower triangle, deduplicate diagonal.
@@ -604,26 +593,6 @@ def initialize_common_problem(
 
     # #     x_best = jnp.where(resid_5 < resid_0, x5, x0)
     # #     return x5, inertia # x_best, inertia
-
-    refactorize_and_linear_solve = ft.partial(_linear_solve, refactorize_signal=jnp.array([1], dtype=jnp.int32), solve_signal=jnp.array([1], dtype=jnp.int32))
-    refactorize = ft.partial(_linear_solve, refactorize_signal=jnp.array([1], dtype=jnp.int32), solve_signal=jnp.array([0], dtype=jnp.int32))
-
-    # LS dedicated solver (separate cuDSS handle — never contaminates KKT solver)
-    _ls_linear_solve = CuDSSSolver(csr_ls.indptr, csr_ls.indices, device_id, mtype_id, mview_id)
-    ls_refactorize_and_solve = ft.partial(
-        _ls_linear_solve,
-        refactorize_signal=jnp.array([1], dtype=jnp.int32),
-        solve_signal=jnp.array([1], dtype=jnp.int32),
-        ir_nsteps_signal=jnp.array([p["ir_nsteps"]], dtype=jnp.int32)
-    )
-    # standalone solve (no refactorize) reusing the LS factorization, so cuDSS IR
-    # can drive the residual to ~machine precision (see ls_linear_solve usage).
-    ls_linear_solve = ft.partial(
-        _ls_linear_solve,
-        refactorize_signal=jnp.array([0], dtype=jnp.int32),
-        solve_signal=jnp.array([1], dtype=jnp.int32),
-        ir_nsteps_signal=jnp.array([p["ir_nsteps"]], dtype=jnp.int32)
-    )
 
     # resto bounds -------------------------------------------------------------
     np_L = jnp.zeros([nyc * 2 + nyd * 2, 1])  # exactly zero not pushed to interior
@@ -728,11 +697,10 @@ def initialize_common_problem(
 
     # just to be extremely verbose about everything ----------------------------
     return CommonProblem(
-        refactorize=refactorize,
-        refactorize_and_linear_solve=refactorize_and_linear_solve,
-        linear_solve=linear_solve,
-        ls_refactorize_and_solve=ls_refactorize_and_solve,
-        ls_linear_solve=ls_linear_solve,
+        solver_indptr=solver_csr.indptr,
+        solver_indices=solver_csr.indices,
+        ls_indptr=csr_ls.indptr,
+        ls_indices=csr_ls.indices,
         ls_coo_indices=LHS_ls_triu.indices,
         ls_nnz_triu=ls_nnz_triu,
         coo_indices=LHS_triu.indices,  # for conforming bcoos to original sparsity (a superset)
@@ -786,7 +754,12 @@ def initialize_common_problem(
         calc_next_problem=calc_next_problem,
     )
 
-def initialize_inertia_correction_state(cp):
+def initialize_inertia_correction_state(cp, token):
+    """token: the LIVE (already factorized) KKT FactorToken this fresh ic state
+    inherits — the same registry entry serves regular and restoration modes
+    (the resto system conforms to the same KKT sparsity). Every iteration
+    refactorizes in the IC loop before it solves, which is what makes an
+    inherited token with stale values safe."""
     zf = jnp.array(0.0)  # float
     zi = jnp.array(0)  # integer
     return InertiaCorrectionState(
@@ -800,6 +773,7 @@ def initialize_inertia_correction_state(cp):
         degen_iters=zi,
         inertia=jnp.int32([0, 0]),
         perturbed_data=jnp.zeros([cp.nnz_triu]),
+        token=token,
     )
 
 def initialize_line_search_filter_state(theta_min, theta_max, F, cqpr):
@@ -1111,8 +1085,19 @@ def initialize_problem_regular(cp, x0, args=[(), (), ()]):
         jax.debug.print("LHS after conform: {data}", data=LHS_upper_triangular.data)
     csr_lhs = jsparse.BCSR.from_bcoo(LHS_upper_triangular)
 
-    sol, inertia = cp.refactorize_and_linear_solve(RHS.flatten(), csr_lhs.data)
+    # mint this problem's KKT token: analyze once (structure), full factorize,
+    # then solve. The token is the handle to the live factorization and is
+    # threaded through the state from here on (ic.token).
+    kkt_token = cudss.analyze(csr_lhs.data, cp.solver_indptr, cp.solver_indices,
+                              mtype_id=1, mview_id=1)
+    kkt_token = cudss.factorize(kkt_token, csr_lhs.data)
+    sol = cudss.solve(kkt_token, RHS.flatten())
     sol = sol[:, None]
+
+    # mint the LS-multiplier token: analyze only (values just seed the pattern;
+    # the LS system is fully factorized before every solve — see quantities.py)
+    ls_token = cudss.analyze(jnp.zeros([cp.ls_nnz_triu]), cp.ls_indptr,
+                             cp.ls_indices, mtype_id=1, mview_id=1)
 
     if cp.p["VALIDATION_MODE"] is True:
         m = csr_lhs.todense()
@@ -1178,8 +1163,8 @@ def initialize_problem_regular(cp, x0, args=[(), (), ()]):
     init_dual_inf = jnp.maximum(1.0, cp.nstqf.calc_dual_inf(grad_lag_x, grad_lag_s, ord=1))
     init_primal_inf = jnp.maximum(1.0, cp.nstqf.calc_primal_inf_L1(c, dms))
 
-    # initial inertia correction state
-    ic = initialize_inertia_correction_state(cp)
+    # initial inertia correction state (owns the freshly minted KKT token)
+    ic = initialize_inertia_correction_state(cp, kkt_token)
 
     # unify calculation of jacobians/hessians outside of calc_values_pre_mu
     jac_f, jac_c, jac_d = reg_jac_f, reg_jac_c, reg_jac_d
@@ -1203,7 +1188,7 @@ def initialize_problem_regular(cp, x0, args=[(), (), ()]):
     )
 
     # calculated quantities before mu calc - plus initial inertia correction
-    cqpr, ic = calc_values_pre_mu(it, ic, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count=jnp.array([[0]]))
+    cqpr, ic, ls_token = calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count=jnp.array([[0]]))
 
     # line search filter state
     lsfs = initialize_line_search_filter_state(theta_min, theta_max, F, cqpr)
@@ -1255,6 +1240,7 @@ def initialize_problem_regular(cp, x0, args=[(), (), ()]):
         wd=wd,
         ls=ls,
         ic=ic,
+        ls_token=ls_token,
         adfs=adfs,
         mu=mu,
         tau=tau,
@@ -1540,17 +1526,31 @@ def initialize_skeleton_state(cp, x0, args=[(), (), ()]):
     degen_iters = jnp.array(0) # weak i64/i32
     inertia = jnp.zeros([2], dtype=jnp.int32) # always hard i32
     perturbed_data = jnp.zeros([cp.nnz_triu])
+    # skeleton KKT token: analyze + factorize on a benign nonsingular diagonal
+    # (+1 on the x/s diagonal, -1 on the c/d diagonal — the expected-inertia
+    # signature) so the first real IC-loop refactorize has a valid factorized
+    # entry to advance. The warm-start init path then refactorizes with real
+    # data before any solve.
+    skel_data = (jnp.zeros([cp.nnz_triu])
+                 .at[cp.dxs_diag_indices].set(1.0)
+                 .at[cp.dcd_diag_indices].set(-1.0))
+    kkt_token = cudss.analyze(skel_data, cp.solver_indptr, cp.solver_indices,
+                              mtype_id=1, mview_id=1)
+    kkt_token = cudss.factorize(kkt_token, skel_data)
+    ls_token = cudss.analyze(jnp.zeros([cp.ls_nnz_triu]), cp.ls_indptr,
+                             cp.ls_indices, mtype_id=1, mview_id=1)
     ic = InertiaCorrectionState(
-        dxs=dxs, 
-        dcd=dcd, 
-        dxs_old=dxs_old, 
-        dcd_old=dcd_old, 
-        jac_degen=jac_degen, 
-        hess_degen=hess_degen, 
-        test_status=test_status, 
-        degen_iters=degen_iters, 
-        inertia=inertia, 
-        perturbed_data=perturbed_data
+        dxs=dxs,
+        dcd=dcd,
+        dxs_old=dxs_old,
+        dcd_old=dcd_old,
+        jac_degen=jac_degen,
+        hess_degen=hess_degen,
+        test_status=test_status,
+        degen_iters=degen_iters,
+        inertia=inertia,
+        perturbed_data=perturbed_data,
+        token=kkt_token
     )
 
     # FINAL ASSEMBLY -----------------------------------------------------------
@@ -1582,6 +1582,7 @@ def initialize_skeleton_state(cp, x0, args=[(), (), ()]):
         wd=wd,
         ls=ls,
         ic=ic,
+        ls_token=ls_token,
         adfs=adfs,
         mu=mu,
         tau=tau,

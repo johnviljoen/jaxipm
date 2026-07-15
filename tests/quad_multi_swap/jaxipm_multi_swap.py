@@ -208,7 +208,7 @@ if __name__ == "__main__":
     jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
     jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
-    from jaxipm.solver import solve_throughput
+    from jaxipm.solver import solve_throughput, make_batch_state
     from jaxipm.initialization import (
         initialize_common_problem, initialize_problem_regular,
     )
@@ -249,14 +249,9 @@ if __name__ == "__main__":
         max_solves = tmp["N_RUNS_jaxipm"]
         max_iter_per_solve = cp.p["max_iter"] # int(os.environ.get("MAX_ITER", "500"))
 
-        def stack_states_tp(states):
-            def stack_leaves(*leaves):
-                if eqx.is_array(leaves[0]):
-                    return jnp.stack(leaves)
-                return leaves[0]
-            return jax.tree.map(stack_leaves, *states)
-
-        batch_tp = stack_states_tp([state] * N_batch)
+        # make_batch_state stacks AND re-mints the spineax tokens (stacked
+        # single-state tokens hold distinct registry ids, which vmap rejects)
+        batch_tp = make_batch_state(cp, [state] * N_batch)
 
         rng_key = jax.random.PRNGKey(0)
         _solve_throughput = eqx.filter_jit(solve_throughput, donate="none")

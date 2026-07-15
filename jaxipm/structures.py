@@ -2,6 +2,7 @@ from typing import Callable, Tuple, Dict
 
 import equinox as eqx
 from jaxtyping import Array
+from spineax.cudss import FactorToken
 
 # --------------------------------------------------------- #
 # ---------------------- Functions ------------------------ #
@@ -95,13 +96,13 @@ class SharedTraceQuantityFunctions(eqx.Module):
 
 # common data across all problems in batch
 class CommonProblem(eqx.Module):
-    # sparse linear solver for the KKT systems
-    refactorize: Callable
-    refactorize_and_linear_solve: Callable
-    linear_solve: Callable
-    # dedicated LS multiplier solver (separate cuDSS handle, own sparsity pattern)
-    ls_refactorize_and_solve: Callable
-    ls_linear_solve: Callable  # standalone solve (no refactorize) for IR accuracy
+    # KKT solver CSR pattern (per-problem FactorTokens are minted from these
+    # in initialization; the tokens themselves live in the batched state)
+    solver_indptr: Array
+    solver_indices: Array
+    # dedicated LS multiplier system CSR pattern (own sparsity, own token)
+    ls_indptr: Array
+    ls_indices: Array
     ls_coo_indices: Array  # COO indices for LS-specific sparsity pattern
     ls_nnz_triu: int  # number of nonzeros in upper triangular part of LS LHS
     # All arrays below are problem structure metadata - static across batch
@@ -322,6 +323,12 @@ class InertiaCorrectionState(eqx.Module):
     degen_iters: Array  # = 0 (init)
     inertia: Array  # = jnp.array([0,0]) (init) # I do not need this to be kept, but I like it for debugging
     perturbed_data: Array  # = jnp.zeros_like(op.offsets_size - 1)
+    # spineax factorization token for the KKT system. ic owns "the current
+    # factorization's identity": token.values IS perturbed_data after the IC
+    # loop (the masked-data pattern keeps them in lockstep — see
+    # inertia_correction.py). perturbed_data is kept alongside for now; a
+    # cleanup pass can delete it in favour of token.values.
+    token: FactorToken
 
 # the state for an individual optimization in the batch
 class OptimizationState(eqx.Module):
@@ -346,6 +353,10 @@ class OptimizationState(eqx.Module):
     wd: WatchdogState
     ls: LineSearchState
     ic: InertiaCorrectionState
+    # spineax token for the dedicated LS-multiplier system. Mode-agnostic
+    # (unlike ic, which is saved/restored around restoration), hence state-level.
+    # It is fully factorized before every solve, so no save slot is needed.
+    ls_token: FactorToken
     adfs: Array  # adaptive mu filter state (different to line search filter)
     mu: Array
     tau: Array
@@ -409,6 +420,7 @@ if __name__ == "__main__":
         wd=nones(WatchdogState),
         ls=nones(LineSearchState),
         ic=nones(InertiaCorrectionState),
+        ls_token=None,
         adfs=None,
         mu=None,
         tau=None,
