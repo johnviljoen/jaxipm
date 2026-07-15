@@ -1,0 +1,18 @@
+@theta 1
+4.0019317313140970e-322
+@barr 1
+4.6777921359959605e-310
+@gBD 1
+6.9422902771565516e-310
+@shortened_iter 1
+0
+@trial_iter 1
+84
+@alpha_pr_test 1
+7.1145453001139502e-322
+@last_mu 1
+6.9009670385732492e-08
+@has_watchdog_iterate 1
+0
+@has_watchdog_delta 1
+0

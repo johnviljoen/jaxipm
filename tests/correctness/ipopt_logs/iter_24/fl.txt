@@ -1,0 +1,14 @@
+@in_watchdog 1
+0
+@in_soft_resto_phase 1
+0
+@in_restoration 1
+1
+@fallback_activated 1
+0
+@tiny_step_last_iter 1
+0
+@tiny_step_flag 1
+0
+@free_mu_mode 1
+0

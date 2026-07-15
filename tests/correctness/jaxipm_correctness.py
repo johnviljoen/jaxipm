@@ -70,12 +70,6 @@ from jaxipm.structures import (
     LineSearchState,
     InertiaCorrectionState,
 )
-from jaxipm.utils.validation_utils import (
-    load_vector,
-    load_scalars,
-    load_iterate_x_from_components,
-    load_iterate_z_L_from_components,
-)
 
 # Single source of truth — the quad_nav_circle problem, the same fixed-start
 # nav task Stage 1 (ipopt_correctness.py) converted for IPOPT. Its quadcopter_nav
@@ -94,12 +88,11 @@ IPOPT_LOGS = HERE / "ipopt_logs"
 LOGS = HERE / "logs"
 
 
-# ── Reference loading (flat per-component files, used by the compare rows) ───
+# ── Reference loading (from the full-state iter_<k>/ dumps) ─────────────────
 def count_ipopt_iters(save_dir):
     """Number of consecutive IPOPT iterates k = 0, 1, 2, ... that were logged."""
     k = 0
-    while (os.path.exists(f"{save_dir}/iterate_x_{k}_comp0.txt")
-           or os.path.exists(f"{save_dir}/iterate_{k}_x.txt")):
+    while os.path.exists(f"{save_dir}/iter_{k}/it.txt"):
         k += 1
     return k
 
@@ -119,26 +112,33 @@ def _col_np(vec):
 
 
 def load_ipopt_iterate(save_dir, k, cp):
-    """Load IPOPT's iterate k: the primal/dual vectors plus mu, tau.
+    """Load IPOPT's iterate k from the full-state dump ``iter_<k>/``.
 
     Components mirror jaxipm's Iterate {x, s, y_c, y_d, z_L, z_U, v_L, v_U}.
-    x and z_L go through the component loaders (they handle restoration-phase
-    splitting); the rest are plain single-vector files.
+    The ``@x``/``@z_L`` sections of it.txt hold the CORE vectors (restoration
+    compound parts live in separate ``@x.nc``/... sections, which the compare
+    rows never consume — jaxipm_iterate slices to the core dimensions too);
+    mu/tau come from state.txt. This makes the flat ``iterate_*``/``mu_tau_*``
+    files unnecessary: iter_<k>/ + _static/ is the complete reference.
     """
-    x = np.asarray(load_iterate_x_from_components(save_dir, k, cp))[: cp.nx]
-    z_L = np.asarray(load_iterate_z_L_from_components(save_dir, k, cp))[: cp.nxL]
-    mt = load_scalars(f"{save_dir}/mu_tau_{k}.txt")
+    it = parse_sections(f"{save_dir}/iter_{k}/it.txt")
+    st = parse_sections(f"{save_dir}/iter_{k}/state.txt")
+
+    def _sec(name, limit=None):
+        v = np.asarray(it.get(name, np.zeros(0))).ravel()
+        return _col_np(v if limit is None else v[:limit])
+
     return {
-        "x": _col_np(x),
-        "s": _col_np(load_vector(f"{save_dir}/iterate_{k}_s.txt")),
-        "y_c": _col_np(load_vector(f"{save_dir}/iterate_{k}_y_c.txt")),
-        "y_d": _col_np(load_vector(f"{save_dir}/iterate_{k}_y_d.txt")),
-        "z_L": _col_np(z_L),
-        "z_U": _col_np(load_vector(f"{save_dir}/iterate_{k}_z_U.txt")),
-        "v_L": _col_np(load_vector(f"{save_dir}/iterate_{k}_v_L.txt")),
-        "v_U": _col_np(load_vector(f"{save_dir}/iterate_{k}_v_U.txt")),
-        "mu": float(mt.get("mu", np.nan)),
-        "tau": float(mt.get("tau", np.nan)),
+        "x": _sec("x", cp.nx),
+        "s": _sec("s"),
+        "y_c": _sec("y_c"),
+        "y_d": _sec("y_d"),
+        "z_L": _sec("z_L", cp.nxL),
+        "z_U": _sec("z_U"),
+        "v_L": _sec("v_L"),
+        "v_U": _sec("v_U"),
+        "mu": float(np.asarray(st["mu"]).squeeze()) if "mu" in st else np.nan,
+        "tau": float(np.asarray(st["tau"]).squeeze()) if "tau" in st else np.nan,
     }
 
 
@@ -943,14 +943,13 @@ def main():
             print(f"{k:>4} | {cells}")
 
     # Restoration-flag timeline — did jaxipm enter / exit resto where IPOPT did?
+    # Read from the iter_<k>/fl.txt dump (parse_sections' first-occurrence-wins
+    # gives the aligned dump at the resto-exit double-dump boundary).
     def ipopt_resto_flag(k):
-        f = IPOPT_LOGS / f"iteration_type_{k}.txt"
-        if not f.exists():
+        fl_k = parse_sections(str(IPOPT_LOGS / f"iter_{k}" / "fl.txt"))
+        if "in_restoration" not in fl_k:
             return -1
-        for line in f.read_text().splitlines():
-            if line.startswith("in_restoration"):
-                return int(line.split()[1])
-        return 0
+        return int(np.asarray(fl_k["in_restoration"]).squeeze())
 
     ip_resto = [ipopt_resto_flag(min(k, n_ipopt - 1)) for k in range(n_cmp)]
     print("\n  in_restoration timeline (-=0, R=1):")

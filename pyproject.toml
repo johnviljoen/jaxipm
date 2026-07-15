@@ -13,7 +13,9 @@ dependencies = [
     "matplotlib",
     "tqdm",
     "jax[cuda13]>=0.10.2",
-    "equinox"
+    "equinox",
+    "spineax", # my bridge to cudss's sparse linear solvers
+    "jax2sympy" # my bridge to sympy as a sparse symbolic differentiation engine
 ]
 
 

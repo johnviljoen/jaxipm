@@ -1,0 +1,20 @@
+@dxs 1
+0.0000000000000000e+00
+@dcd 1
+0.0000000000000000e+00
+@dxs_old 1
+5.9942450477547034e-03
+@dcd_old 1
+0.0000000000000000e+00
+@hess_degen 1
+1
+@jac_degen 1
+1
+@test_status 1
+0
+@degen_iters 1
+0
+@inertia_num_neg_evals 1
+506
+@inertia_expected_neg_evals 1
+506

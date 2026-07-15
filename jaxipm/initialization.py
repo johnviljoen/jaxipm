@@ -1088,16 +1088,28 @@ def initialize_problem_regular(cp, x0, args=[(), (), ()]):
     # mint this problem's KKT token: analyze once (structure), full factorize,
     # then solve. The token is the handle to the live factorization and is
     # threaded through the state from here on (ic.token).
-    kkt_token = cudss.analyze(csr_lhs.data, cp.solver_indptr, cp.solver_indices,
-                              mtype_id=1, mview_id=1)
-    kkt_token = cudss.factorize(kkt_token, csr_lhs.data)
+    #
+    # The mint values are tied to EVERY potentially vmapped input (x0 and the
+    # user args) via a zero-valued seed, so vmapping this whole function over
+    # a batch of problems mints ONE block-diagonal entry. Without the seed,
+    # loop-invariant values get hoisted out of vmap (e.g. a problem whose KKT
+    # entries are symbolically constant in the batched args) and the unbatched
+    # token is then rejected by the first batched (re)factorize. Unvmapped,
+    # the seed is exactly 0.0.
+    vmap_seed = sum((0.0 * jnp.sum(leaf)
+                     for leaf in jax.tree.leaves((x0, args))),
+                    start=jnp.zeros([]))
+    kkt_token = cudss.analyze(csr_lhs.data + vmap_seed, cp.solver_indptr,
+                              cp.solver_indices, mtype_id=1, mview_id=1)
+    kkt_token = cudss.factorize(kkt_token, csr_lhs.data + vmap_seed)
     sol = cudss.solve(kkt_token, RHS.flatten())
     sol = sol[:, None]
 
     # mint the LS-multiplier token: analyze only (values just seed the pattern;
     # the LS system is fully factorized before every solve — see quantities.py)
-    ls_token = cudss.analyze(jnp.zeros([cp.ls_nnz_triu]), cp.ls_indptr,
-                             cp.ls_indices, mtype_id=1, mview_id=1)
+    ls_token = cudss.analyze(
+        jnp.zeros([cp.ls_nnz_triu]) + vmap_seed, cp.ls_indptr,
+        cp.ls_indices, mtype_id=1, mview_id=1)
 
     if cp.p["VALIDATION_MODE"] is True:
         m = csr_lhs.todense()
@@ -1531,14 +1543,22 @@ def initialize_skeleton_state(cp, x0, args=[(), (), ()]):
     # signature) so the first real IC-loop refactorize has a valid factorized
     # entry to advance. The warm-start init path then refactorizes with real
     # data before any solve.
+    # Both seeds are tied to every potentially vmapped input (x0 and args) so
+    # they BATCH under vmap (bare constants are hoisted out of vmap and would
+    # mint unbatched entries that the first batched (re)factorize rejects);
+    # unvmapped the added term is exactly 0.
+    vmap_seed = sum((0.0 * jnp.sum(leaf)
+                     for leaf in jax.tree.leaves((x0, args))),
+                    start=jnp.zeros([]))
     skel_data = (jnp.zeros([cp.nnz_triu])
                  .at[cp.dxs_diag_indices].set(1.0)
-                 .at[cp.dcd_diag_indices].set(-1.0))
+                 .at[cp.dcd_diag_indices].set(-1.0)) + vmap_seed
     kkt_token = cudss.analyze(skel_data, cp.solver_indptr, cp.solver_indices,
                               mtype_id=1, mview_id=1)
     kkt_token = cudss.factorize(kkt_token, skel_data)
-    ls_token = cudss.analyze(jnp.zeros([cp.ls_nnz_triu]), cp.ls_indptr,
-                             cp.ls_indices, mtype_id=1, mview_id=1)
+    ls_token = cudss.analyze(
+        jnp.zeros([cp.ls_nnz_triu]) + vmap_seed, cp.ls_indptr,
+        cp.ls_indices, mtype_id=1, mview_id=1)
     ic = InertiaCorrectionState(
         dxs=dxs,
         dcd=dcd,

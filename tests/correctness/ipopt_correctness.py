@@ -1,19 +1,24 @@
 """
 Stage 1 of the correctness_test experiment.
 
-Takes the jaxipm-format problem from problem.py, converts it to cyipopt form
-with jaxipm.utils.sif_adapter.custom_to_cyipopt_format, and solves it with the
-patched IPOPT (Ipopt 3.14.18 + JohnsCustomLogging). The patched solver dumps
-full per-iteration internal state to ./ipopt_logs/, which Stage 2
+Takes the jaxipm-format quad_nav problem (the same one Stage 2 feeds to
+jaxipm), converts it to cyipopt form with
+jaxipm.utils.problem_format_utils.custom_to_cyipopt_format, and solves it
+with the patched IPOPT (ipopt_logging_mk2: Ipopt + JohnsCustomLogging). The
+patched solver dumps full per-iteration internal state — the sectioned
+iter_<k>/ + _static/ schema — to ./ipopt_logs/, which Stage 2
 (jaxipm_correctness.py) validates against.
 
-Run with the `jaxipm` conda env (its cyipopt links the patched libipopt):
-    conda run -n jaxipm python ipopt_correctness.py
-or simply  ./run.sh
+Only needed to REGENERATE the reference logs: the repo ships a committed
+ipopt_logs/, so Stage 2 runs out of the box. Requires a cyipopt linked
+against the patched libipopt (the `jaxipm` conda env). Run from the repo
+root:
+    PYTHONPATH=. conda run -n jaxipm python tests/correctness/ipopt_correctness.py
 """
 
 import os
 import glob
+import shutil
 import time
 
 import numpy as np
@@ -24,11 +29,13 @@ jax.config.update("jax_enable_x64", True)
 
 from cyipopt import minimize_ipopt
 
-from jaxipm.utils.sif_adapter import custom_to_cyipopt_format
-from problems.redundant.quadcopter_nmpc_nav.plotting_quad_nav import BatchedAnimator
+from jaxipm.utils.problem_format_utils import custom_to_cyipopt_format
 
-# Single source of truth — the same object Stage 2 feeds to jaxipm.
-from problem import quadcopter_nav, OBS_XC, OBS_YC, OBS_R, N_HORIZON, Ts
+# Single source of truth — the same problem Stage 2 feeds to jaxipm. Its
+# module-level test_params.json reads are repo-root-relative, so run this
+# from the repo root (same convention as Stage 2):
+#     PYTHONPATH=. python tests/correctness/ipopt_correctness.py
+from tests.quad_nav_circle.jaxipm_quad_nav import quadcopter_nav, N_HORIZON, TS as Ts
 
 
 def main():
@@ -38,16 +45,16 @@ def main():
     os.makedirs(logs_dir, exist_ok=True)
 
     # The patched IPOPT will not create its own log directory, and stale files
-    # would corrupt Stage 2's per-iteration comparison — start clean.
+    # would corrupt Stage 2's per-iteration comparison — start clean. (The
+    # iter_<k>/ dumps are directories, hence rmtree rather than per-file.)
     ipopt_logs = os.path.join(here, "ipopt_logs")
     if os.path.isdir(ipopt_logs):
-        for fp in glob.glob(os.path.join(ipopt_logs, "*")):
-            os.remove(fp)
+        shutil.rmtree(ipopt_logs)
     os.makedirs(ipopt_logs, exist_ok=True)
 
     # ── Build the NLP (jaxipm format) and convert to cyipopt ────────────────
     f, c, d, x_L, x_U, d_L, d_U, z_init, gt, aux = quadcopter_nav(N=N_HORIZON)
-    z_to_xu, xu_to_z, quad_params = aux
+    z_to_xu, xu_to_z, quad_params, _x0 = aux
     obj, obj_grad, obj_hess, constraints, bounds = custom_to_cyipopt_format(
         f, c, d, x_L, x_U, d_L, d_U, z_init
     )
@@ -79,8 +86,8 @@ def main():
     solve_time = time.perf_counter() - t0
 
     # Authoritative iteration count: the patched solver writes one
-    # iteration_type_<k>.txt per iteration.
-    n_iter_logs = len(glob.glob(os.path.join(ipopt_logs, "iteration_type_*.txt")))
+    # iter_<k>/ full-state dump per iteration.
+    n_iter_logs = len(glob.glob(os.path.join(ipopt_logs, "iter_[0-9]*")))
 
     print("\n" + "=" * 64)
     print("  IPOPT correctness-test solve")
@@ -88,7 +95,7 @@ def main():
     print(f"  status        : {result.status}  ({result.message})")
     print(f"  success       : {result.success}")
     print(f"  objective     : {float(result.fun):.10e}")
-    print(f"  iterations    : {n_iter_logs} (from ipopt_logs/iteration_type_*)")
+    print(f"  iterations    : {n_iter_logs} (from ipopt_logs/iter_<k>/ dumps)")
     print(f"  solve time    : {solve_time:.3f} s")
     print(f"  ipopt_logs    : dumped to {ipopt_logs}")
     print("=" * 64)
@@ -114,24 +121,6 @@ def main():
         Ts=np.array([Ts]),
     )
     print(f"saved {out_path}")
-
-    # ── Visualise the open-loop planned trajectory (3D gif) ─────────────────
-    xs_arr = x_sol.copy()
-    xs_arr[:, :2] *= -1.0  # negate x,y to match the animator's coordinate frame
-    t_arr = np.arange(xs_arr.shape[0]) * Ts
-    gif_path = os.path.join(logs_dir, "ipopt_correctness.gif")
-    animator = BatchedAnimator(
-        p=quad_params,
-        xs=[xs_arr],
-        t=t_arr,
-        cylinder_definitions=(OBS_XC, OBS_YC, OBS_R),
-        drawCylinder=True,
-        dt=Ts,
-        title="correctness_test - IPOPT open-loop plan",
-        save_path=gif_path,
-    )
-    animator.animate()
-    print(f"saved {gif_path}")
 
 
 if __name__ == "__main__":

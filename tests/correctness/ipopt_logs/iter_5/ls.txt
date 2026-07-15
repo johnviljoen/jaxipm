@@ -1,0 +1,18 @@
+@filter.theta_min 1
+1.9864651038787162e-03
+@filter.theta_max 1
+1.9864651038787159e+05
+@filter.ref_theta 1
+2.0441610883315096e+01
+@filter.ref_barr 1
+3.7851934771085519e+02
+@filter.ref_gBD 1
+1.2850331462419090e+04
+@filter.n_filter_resets 1
+0
+@filter.count_successive_filter_rejections 1
+0
+@filter.last_rejection_due_to_filter 1
+0
+@filter.F 1 2
+3.6964469266282089e+02 2.0441742585469040e+01
