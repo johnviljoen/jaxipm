@@ -23,23 +23,22 @@ uv pip install jaxipm
 
 > Using a uv-managed project instead? Just `uv add jaxipm`.
 
-The correctness tests (`tests/correctness/`) additionally need `casadi` and `cyipopt` (the latter built against an IPOPT install) for the IPOPT cross-checks.
+The IPOPT cross-check (`tests/correctness/jaxipm_correctness.py`) runs out of the box against the reference logs committed in `tests/correctness/ipopt_logs/`. Regenerating those logs (`tests/correctness/ipopt_correctness.py`) is only needed if the test problem changes, and additionally requires `casadi` and `cyipopt` built against our logging-instrumented IPOPT fork.
 
 # Usage
 
-A minimal constrained NLP — minimize `(x0-2)^2 + (x1-1)^2` subject to `x0^2 + x1^2 <= 1` (solution: the projection of `(2, 1)` onto the unit disk). The objective `f` returns a scalar; equality constraints `c` and inequality constraints `d` return 1-D arrays, or `None` if absent; `d_L <= d(x) <= d_U` and `x_L <= x <= x_U` are the bounds. Solver parameters are IPOPT-style, with defaults in `jaxipm/params.json` (run from the repo root):
+A minimal constrained NLP — minimize `(x0-2)^2 + (x1-1)^2` subject to `x0^2 + x1^2 <= 1` (solution: the projection of `(2, 1)` onto the unit disk). The objective `f` returns a scalar; equality constraints `c` and inequality constraints `d` return 1-D arrays, or `None` if absent; `d_L <= d(x) <= d_U` and `x_L <= x <= x_U` are the bounds. Solver parameters are IPOPT-style; `jaxipm.default_params()` returns the defaults (shipped as `jaxipm/params.json`):
 
 ```python
-import json
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
+from jaxipm import default_params
 from jaxipm.initialization import initialize_common_problem, initialize_problem_regular
 from jaxipm.solver import solve
 
-with open("jaxipm/params.json") as fp:
-    p = json.load(fp)
+p = default_params()
 
 f = lambda x: (x[0] - 2.0) ** 2 + (x[1] - 1.0) ** 2   # objective (scalar)
 c = lambda x: None                                     # equality constraints (none)

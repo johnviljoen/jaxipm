@@ -1,22 +1,35 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaxipm"
 version = "0.0.1"
+description = "GPU-batched nonlinear interior-point optimization in JAX — many problems, one GPU."
 authors = [
-    {name="John Viljoen", email="johnviljoen2@gmail.com"}
+    { name = "John Viljoen", email = "johnviljoen2@gmail.com" }
 ]
-license = {text="MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["jax", "nonlinear-programming", "interior-point", "optimization", "gpu", "batched", "ipopt", "cudss"]
+
 dependencies = [
-    "matplotlib",
-    "tqdm",
     "jax[cuda13]>=0.10.2",
     "equinox",
-    "spineax", # my bridge to cudss's sparse linear solvers
-    "jax2sympy" # my bridge to sympy as a sparse symbolic differentiation engine
+    "jaxtyping",
+    "numpy",
+    "spineax>=0.0.3",  # my bridge to cuDSS's batched sparse linear solvers
+    "jax2sympy>=0.0.2" # my bridge to sympy as a sparse symbolic differentiation engine (0.0.2: sympy2jax dep fix)
 ]
 
+[project.urls]
+Homepage = "https://github.com/johnviljoen/jaxipm"
+Repository = "https://github.com/johnviljoen/jaxipm"
 
+[tool.setuptools.packages.find]
+include = ["jaxipm*"]  # only package the jaxipm package, not tests/etc.
 
+[tool.setuptools.package-data]
+jaxipm = ["params.json"]

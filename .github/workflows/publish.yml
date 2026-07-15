@@ -1,0 +1,56 @@
+name: Build & publish to PyPI
+
+# Pure-Python package: build sdist + wheel with pypa/build.
+#
+#   - PRs / manual runs: build as a CI check and upload the artifacts.
+#   - Pushing a v* tag:  build, then publish to PyPI via Trusted Publishing (OIDC).
+#
+# Trusted Publishing setup (one-time, no API token needed): on PyPI add a
+# publisher for this repo with workflow `publish.yml` and environment `pypi`
+# (https://docs.pypi.org/trusted-publishers/).
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: pipx run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish on a version tag push.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    environment: pypi
+    permissions:
+      id-token: write # OIDC token for PyPI Trusted Publishing
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
