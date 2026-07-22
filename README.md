@@ -2,6 +2,8 @@
 
 We present our jaxipm work from our paper: [Scaling Nonlinear Optimization: Many Problems, One GPU](https://arxiv.org/abs/2606.26341)
 
+<img src="assets/quad_nav_circle.gif" width="32%"/> <img src="assets/quad_multi_swap.gif" width="32%"/> <img src="assets/quad_track_avoid.gif" width="32%"/>
+
 # Installation
 
 Requirements:
