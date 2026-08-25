@@ -1,3 +1,5 @@
+import os
+
 import jax
 import equinox as eqx
 
@@ -197,3 +199,25 @@ def filter_switch(index, branches, *operands):
         return eqx.combine(result_dynamic, output_static)
 
 
+
+
+def order_token_after(token, *deps):
+    """Pin a spineax token's NEXT phase call after the given arrays, via a
+    data dependency (optimization_barrier on the token's id leaf).
+
+    XLA orders custom calls by dataflow only — has_side_effect blocks
+    DCE/CSE, not reordering. A cudss.solve returns no token, so nothing
+    stops the scheduler from running the (re)factorize that CONSUMES the
+    solve's input id before the solve itself; the solve then finds the id
+    non-resident and pays a full registry rebuild (re-analysis). Barriering
+    the id with each solve's output restores program order at zero runtime
+    cost. See the rebuild-storm diagnosis of 2026-08-04 (issue #27 era).
+
+    JAXIPM_NO_BARRIER=1 turns this into a no-op (A/B: the 2026-08-10
+    spineax max-id-collapse fix may make these barriers redundant, and they
+    serialize solves against later numeric phases).
+    """
+    if os.environ.get("JAXIPM_NO_BARRIER") == "1":
+        return token
+    out = jax.lax.optimization_barrier((token.id, *deps))
+    return eqx.tree_at(lambda t: t.id, token, out[0])

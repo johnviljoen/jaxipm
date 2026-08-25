@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 from pathlib import Path
 from jaxipm.structures import Iterate, WatchdogState, OptimizationState
-from jaxipm.utils.eqx_utils import filter_tree_at_select, filter_select, filter_while_loop
+from jaxipm.utils.eqx_utils import filter_tree_at_select, filter_select, filter_while_loop, order_token_after
 from jaxipm.quantities import calc_values_pre_mu, calc_values_post_mu
 from jaxipm.barrier import calc_updated_mu
 from jaxipm.initialization import (
@@ -1741,6 +1741,9 @@ def post_process(original_state, result, cp):
     )
     ls_token = cudss.factorize(result.ls_token, ls_init_csr.data)
     ls_step = cudss.solve(ls_token, ls_init_rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
+    # order the next ls factorize (which consumes this id) after this solve —
+    # XLA orders custom calls by dataflow only
+    ls_token = order_token_after(ls_token, ls_step)
     y_c_ls = ls_step[cp.nx + cp.nyd : cp.nx + cp.nyd + cp.nyc]
     y_d_ls = ls_step[cp.nx + cp.nyd + cp.nyc : cp.nx + cp.nyd + cp.nyc + cp.nyd]
     yinitnrm = jnp.maximum(

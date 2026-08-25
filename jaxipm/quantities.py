@@ -12,7 +12,7 @@ from equinox.internal import ω
 
 from spineax import cudss
 
-from jaxipm.utils.eqx_utils import filter_select
+from jaxipm.utils.eqx_utils import filter_select, order_token_after
 import jaxipm.utils.sparse_utils as spu
 # from jaxipm.barrier import calc_quality_function_mu
 from jaxipm.inertia_correction import solve_with_inertia_correction, solve_with_inertia_correction_condensed
@@ -1033,6 +1033,15 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     f, c, d = fun_outs
     grad_lag_x, slacks, theta, avrg_compl, grad_lag_s = quantities
 
+    # This call's (re)factorizes CONSUME ic.token / ls_token. Every solve of
+    # the previous iteration fed the accepted iterate, so barriering the ids
+    # on it.x forces those solves to execute first (XLA orders custom calls
+    # by dataflow only — a late solve on a consumed id costs a full registry
+    # rebuild, i.e. an unrequested cuDSS re-analysis).
+    ic = eqx.tree_at(lambda t: t.token, ic,
+                     order_token_after(ic.token, it.x))
+    ls_token = order_token_after(ls_token, it.x)
+
     # calculate everything we can ahead of time for the mu calc ----------------
     resto = fl.in_restoration.squeeze()
     rnx = cp.nx + cp.nyc * 2 + cp.nyd * 2
@@ -1123,6 +1132,8 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     # cuDSS-internal-IR stale-pointer bug.
     ls_token = cudss.factorize(ls_token, ls_init_csr.data)
     ls_step = cudss.solve(ls_token, ls_init_rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
+    # order the NEXT ls factorize (which consumes this id) after this solve
+    ls_token = order_token_after(ls_token, ls_step)
     y_c_init = ls_step[cp.nx + cp.nyd : cp.nx + cp.nyd + cp.nyc]
     y_d_init = ls_step[cp.nx + cp.nyd + cp.nyc : cp.nx + cp.nyd + cp.nyc + cp.nyd]
 
@@ -1188,6 +1199,9 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     # solve-only against the IC loop's factorization (ic.token.values == the
     # perturbed data it factorized); JAX-side IR refines against that matrix
     step_cen = cudss.solve(ic.token, rhs_cen_final.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
+    # order the next iteration's IC refactorize (consumes this id) after it
+    ic = eqx.tree_at(lambda t: t.token, ic,
+                     order_token_after(ic.token, step_cen))
 
     if cp.p["VALIDATION_MODE"] is True:
         rrhs_aff_full_final = cp.stqf.calc_vector_to_iterate(cp.nstqfr.kkt.calc_resto_red_pd_RHS_aff(
@@ -1200,6 +1214,8 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
         )
 
         step_aff = cudss.solve(ic.token, rhs_aff_final.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
+        ic = eqx.tree_at(lambda t: t.token, ic,
+                         order_token_after(ic.token, step_aff))
     else:
         rrhs_aff_full_final = rrhs_aff_full
 

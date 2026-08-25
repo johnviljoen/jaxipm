@@ -13,6 +13,8 @@ import jax.numpy as jnp
 import equinox as eqx
 from spineax import cudss
 
+from jaxipm.utils.eqx_utils import order_token_after
+
 def _compute_DcR_DdR_diag(Sigma_nc, Sigma_pc, Sigma_nd, Sigma_pd, dxs):
     """Compute DcR and DdR diagonal values for resto reduced system.
 
@@ -158,6 +160,9 @@ def solve_with_inertia_correction(csr_lhs, rhs, ic, cp, fl, resto, Sigma_nc, Sig
     # registry factors == perturbed_data == token.values, so a plain solve
     # suffices (one full refactorization removed per IPM iteration).
     sol = cudss.solve(token, rhs_vec)
+    # order the next consumer of this id (next iteration's refactorize) after
+    # this solve — XLA orders custom calls by dataflow only
+    token = order_token_after(token, sol)
     step = sol[:, None]
     test_status = jax.lax.cond(dxs > 0, lambda: jnp.array(3), lambda: jnp.array(1))
     # Now finalize hess_degen: set to 2 (DEGENERATE) only if dxs>0 and at degen limit
@@ -290,6 +295,9 @@ def solve_with_inertia_correction_condensed(
 
     # masked-data pattern: registry factors == perturbed_data, plain solve only
     sol = cudss.solve(token, rhs_vec)
+    # order the next consumer of this id (next iteration's refactorize) after
+    # this solve — XLA orders custom calls by dataflow only
+    token = order_token_after(token, sol)
     step = sol[:, None]
     test_status = jax.lax.cond(dxs > 0, lambda: jnp.array(3), lambda: jnp.array(1))
     hess_degen_final = jax.lax.cond(

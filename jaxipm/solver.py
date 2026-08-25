@@ -4,6 +4,7 @@
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 from spineax import cudss
 
 from jaxipm.search import execute_search, post_process
@@ -48,9 +49,13 @@ def make_batch_state(cp, states):
     the vmapped spineax handlers reject ("stacked distinct tokens"). A batch
     must be ONE block-diagonal registry entry, minted by vmap(analyze), whose
     id is broadcast across the batch. The KKT token is re-minted from each
-    state's last-factorized values (token.values) and fully factorized; the LS
-    token is analyze-only (it is factorized before every solve). saved_ic gets
-    the same re-minted KKT token so resto save/restore stays consistent.
+    state's last-factorized values (token.values) and fully factorized. The LS
+    token is also factorized at mint time — on identity values, since real
+    data is factorized in before every solve — because spineax >= 0.0.5 makes
+    the token phase ("analyzed"/"factorized") static pytree metadata, and an
+    analyze-only token would flip phase on the first in-loop factorize,
+    breaking the while_loop carry structure. saved_ic gets the same re-minted
+    KKT token so resto save/restore stays consistent.
     """
     def stack_leaves(*leaves):
         if eqx.is_array(leaves[0]):
@@ -63,9 +68,15 @@ def make_batch_state(cp, states):
     kkt_tokens = jax.vmap(lambda v: cudss.factorize(
         cudss.analyze(v, cp.solver_indptr, cp.solver_indices, mtype_id=1, mview_id=1), v
     ))(kkt_values)
-    ls_tokens = jax.vmap(lambda v: cudss.analyze(
-        v, cp.ls_indptr, cp.ls_indices, mtype_id=1, mview_id=1
-    ))(jnp.zeros([batch_size, cp.ls_nnz_triu]))
+    ls_indptr_np = np.asarray(cp.ls_indptr)
+    ls_indices_np = np.asarray(cp.ls_indices)
+    ls_row_of_nnz = np.repeat(np.arange(ls_indptr_np.size - 1),
+                              np.diff(ls_indptr_np))
+    ls_identity = jnp.asarray((ls_indices_np == ls_row_of_nnz).astype(np.float64))
+    ls_values0 = jnp.tile(ls_identity[None], (batch_size, 1))
+    ls_tokens = jax.vmap(lambda v: cudss.factorize(
+        cudss.analyze(v, cp.ls_indptr, cp.ls_indices, mtype_id=1, mview_id=1), v
+    ))(ls_values0)
 
     return eqx.tree_at(
         lambda s: (s.ic.token, s.saved_ic.token, s.ls_token),
