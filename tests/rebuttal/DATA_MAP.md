@@ -1,0 +1,39 @@
+# Where the rebuttal data lives (2026-08-26, 23:00)
+
+All paths relative to `/home/john/code/jaxipm_release`. Raw = per-solve npz with a
+`metadata` JSON (commits, params, GPU, epoch stamps); Tables = markdown/JSON produced
+by `tests/rebuttal/analyze_*.py` (re-run any of them from the repo root to refresh).
+Findings and interpretation: `tests/rebuttal/STATUS.md` (items 0–28).
+
+| Manifest run | Raw data | Tables / figures | Script |
+|---|---|---|---|
+| **A** ILB-on throughput ×5 (2026-08-13, fresh process per repeat) | `tests/*/logs/jaxipm_variance_<tag>_fresh_rep{1..5}_results.npz` (+ `jaxipm_variance_<tag>_results.npz`, JIT-once ×5) | column "A" of `results/C_ladder_and_sweeps.md`, `results/L_orderstats_vs_measured.md`, `results/e1_cpu_scaling*.md` | `analyze_C.py`, `analyze_L.py` |
+| **B** ILB-off throughput ×5 (in-process) and ×5 (fresh process) | `tests/*/logs/jaxipm_ablation_<tag>_ws_ir0_b<N>_results.npz` (in-process, N = 500/250/75) and `..._b<N>_fresh_rep{1..5}_results.npz` | `results/C_ladder_and_sweeps.md` (columns (2)), `results/L_orderstats_vs_measured.md` | `analyze_C.py`, `analyze_L.py` |
+| **C** ladder: N=1 rung, ILB-off batch sweep, peak memory | `jaxipm_ablation_<tag>_{hr,ws}_ir0_b1_results.npz` (N=1, 3 reps, all 7 configs incl. multi N=4 from 08-27), `jaxipm_ablation_<tag>_ws_ir0_b{125,250,500,1000,2000 / 25…600}_results.npz` (3 reps, `peak_mem_bytes`); ILB-on sweep 2026-08-10/12: `jaxipm_batch_sweep_<tag>_results.npz` (nav: `.fullsweep-bak.npz`); harness ILB-on sweep with peak memory (overnight 08-27; **timings contaminated by GPU-5 co-tenants after 01:43 except nav N≤1000** — see STATUS 31): `jaxipm_ablation_<tag>_hr_ir0_b<N>_results.npz`, and ILB-off extension to OOM `..._ws_ir0_b{4000,8000 / 2000,4000 / 1200,2400}` | `results/C_ladder_and_sweeps.md` | `analyze_C.py` |
+| **D** IPOPT core sweep + P=64 repeats + IPOPT-default ×5 (`casadi_<tag>_tol1e-08_rep<r>`, `casadi_<tag>_pool_tol1e-08` with U_all; `results/ipopt_default_repeats.md`, `analyze_ipopt_default.py`) (`*_c064_tol1e-08_{now,quiet}_rep<r>`, `results/D_p64_repeats.md`, `analyze_D_repeats.py`) | tol 1e-6 (2026-08-03): `tests/*/logs/casadi_cpu_throughput_<tag>_{phys,smt}_c<P>_results.npz`; **tol 1e-8 (running now)**: `..._c<P>_tol1e-08_results.npz` with `U_all`, `lam_g`, `status_code`, `ipopt_tol`, `metadata` | `results/e1_cpu_scaling_tol1e-6.md/.json`, `figures/e1_cpu_scaling*.pdf/png`, `figures/e1_cpu_efficiency*`; tol-1e-8 versions appear as `*_tol1e-08*` when D finishes | `analyze_e1_cpu_scaling.py` (`CPU_SWEEP_SUFFIX=_tol1e-08` selects the rerun) |
+| **E** MadNLP ×5, jaxipm pool, tol 1e-8 | `tests/*/logs/madnlp_<tag>_pool_tol1e-8_results.npz` + `.meta.json` (status legend, commit) | `results/E_madnlp.md/.json` | `analyze_E.py` |
+| **F** branch census (per member per fused iteration) | `jaxipm_ablation_<tag>_{hr,ws}_ir0_b<N>_dbg_results.npz` → arrays `branch_log`, `log_batch_of_row` (codes: 0 full step, 1 SOC, 2 WD, 3 TS, 4 SFR, 5 resto-entry, 6 backtracked, 7 init, +8 in restoration) | `results/census_F_branches.md`, `results/census_summary.json` | `analyze_census.py` |
+| **G** termination census | same `_dbg` files → `terms`, `iters`, `term_hist` (all codes incl. hidden failures); IPOPT/MadNLP: `casadi_cpu_throughput_*_c001*` (`status_code` in the 1e-8 rerun), `madnlp_*_pool_tol1e-8` (`status_codes`) | `results/census_G_termination.md`, `results/existing_e5_census.md` (tol 1e-6 IPOPT / paper MadNLP), `..._e5_census-tol1e-08.md` after D | `analyze_census.py`, `analyze_existing.py` |
+| **PRIMARY TABLE (consolidated)** | — | `results/PRIMARY_TABLE.md` (throughput ±, cost ± sd, ‖c‖∞, ineq/bound violations, footnotes; 08-27 20:40), `primary_table_quality.md/.json`, `ipopt_default_repeats.md`, `D_p64_repeats.md`, `E_madnlp.md` | `analyze_primary_table.py`, `analyze_ipopt_default.py`, `analyze_D_repeats.py` |
+| **H** paired cost / violations / KKT error | paired cost: jaxipm `jaxipm_<tag>_results.npz` (paper) or `_dbg` files (`obj_vals`, `pool_idx`, `z_all`) vs IPOPT P=1 sweep (`obj_vals`, `starts`/`angles`); KKT error at termination: `_dbg` → `kkt_err` (overall/dual/constr/compl, scaled) | `results/existing_e4_cost.md` (paired tests), `results/census_H_kkt.md`; constraint-violation sidecars `*.quality.npz` (64 files) + `results/e4_quality.md` (08-27 23:45, GPU 1; median/p95/max ‖c‖∞, ‖c‖₁, ineq, bound per jaxipm run); cross-solver comparison in `results/PRIMARY_TABLE.md` | `analyze_existing.py`, `analyze_census.py`, `analyze_quality.py` |
+| **I1** per-iteration KKT step residual | `_dbg` → `kkt_res_log` (‖KΔ−r‖/‖r‖), `kkt_bwd_log` (backward error), `ic_log` (Hessian perturbation applied) per member per fused iteration; standalone solve-accuracy checks: `results/i1_solve_accuracy_nav_s90_b{1,8,500}.json` (fresh cuDSS vs SciPy LU, re-mint / general-LU controls, pivot counts) | `results/census_I1_residual.md` | `analyze_census.py`, `i1_solve_accuracy.py` |
+| **I2** small N, ir 0 vs 100 | `jaxipm_ablation_<tag>_ws_ir{0,100}_b{1,8,32}_dbg_i2_results.npz` (48–64 pool-spread instances; multi N=32 skipped); IC-log nav runs `..._dbg_iclog_results.npz` (N=1/32/500) | rows `_i2` of `results/census_G_termination.md`, `census_F_branches.md`, `census_I1_residual.md` | `analyze_census.py` |
+| **I3** batch refinement divergence | `results/i3_nav_s90_b500.npz` (per-member residual per refinement step at fused iterations 3/10/30; same-token / re-mint / drop-worst controls) | printed table in `tests/rebuttal/logs/…` (see STATUS items 11, 24) | `i3_refinement_divergence.py` |
+| stagnation root cause | traces `tests/rebuttal/logs/dbg_stag_b1.log`, `dbg_stag_b48.log`, `dbg_stag_b1_piv.log` (per-iteration μ, KKT error, ‖rhs‖, ‖step‖, δ_x, cuDSS pivot counts); subsample discriminators `jaxipm_ablation_v2.0_ws_ir0_b{48,250}_dbg_sub{48,250}_results.npz` | STATUS items 22–24 | `debug_stagnation.py` |
+| **J** per-step injection | `tests/correctness/logs/{ipopt,jaxipm}_correctness.npz` (paper problem, ir=100; unchanged), `jaxipm_correctness_branches.npz` + `figures/validation_state_ecdf_branches.pdf` (Figure 6 with branch legend, 08-27) + per-instance `jaxipm_correctness_inst<k>.npz` / `ipopt_correctness_inst<k>.npz` / `tests/correctness/ipopt_logs_inst<k>/` (overnight 08-27, `CORR_INSTANCE=k`, `jx_branch` per step) | `results/J_correctness.md`, `figures/J_step_ecdf.pdf` | `run_J.sh`, `analyze_J.py`, `tests/correctness/` |
+| **L** order statistics | computed from the `_dbg` iteration distributions | `results/L_orderstats_vs_measured.md`, `results/existing_e11_orderstats.md` | `analyze_L.py`, `analyze_existing.py` |
+| **K** fusion profile | `results/K_fusion_profile_<label>.json` (per-region device ms per fused iteration from `jax.named_scope("K_*")` markers + XLA profiler; cuDSS custom-call counts; wall ms) — traces in `tests/rebuttal/logs/ktrace_<label>/` (overnight 08-27) | `results/K_fusion_profile.md`, `figures/K_fusion_profile.pdf` | `k_fusion_profile.py` (`--analyze` for tables) |
+
+Run logs (stdout of every run, with per-repeat stamps): `tests/rebuttal/logs/*.log`;
+queue/worker logs: `tests/rebuttal/logs_par_20260826_1310/`, `logs_chain_*.log`,
+`logs_queue_*.log`. IPOPT regularization-frequency check (12 nav instances, print_level 5):
+scratch output quoted in STATUS item 21.
+
+Paper headline files were never overwritten: `jaxipm_<tag>_results.npz`, `casadi_<tag>_results.npz`,
+`madnlp_<tag>_results.npz` keep their June/July/August mtimes.
+
+## Paper Figure 6 (correctness ECDF) with legend — Aug 28
+- `tests/correctness/figures/validation_state_ecdf_paper_legend.{pdf,png}` — paper data + paper categories legend
+- `tests/correctness/figures/validation_state_ecdf_paper_branches.{pdf,png}` — paper data + branch-type legend
+- `tests/rebuttal/results/fig6_paper_samples.npz` — the 420 paper samples (dev, run, iter, category, branch flags)
+- source archives (not in this repo): `/home/john/code/jaxipm/data/validation_runs/run_*`

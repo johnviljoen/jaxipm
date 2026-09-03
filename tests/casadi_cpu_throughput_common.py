@@ -15,11 +15,59 @@ import argparse
 import contextlib
 import importlib
 import io
+import json
 import multiprocessing as mp
+import socket
+import subprocess
+import sys
 import time
 import traceback
 
 import numpy as np
+
+# IPOPT return statuses -> small int codes saved per solve (rebuttal run G/H).
+IPOPT_STATUS = ["Solve_Succeeded", "Solved_To_Acceptable_Level", "Infeasible_Problem_Detected",
+                "Search_Direction_Becomes_Too_Small", "Diverging_Iterates", "User_Requested_Stop",
+                "Feasible_Point_Found", "Maximum_Iterations_Exceeded", "Restoration_Failed",
+                "Error_In_Step_Computation", "Maximum_CpuTime_Exceeded", "Not_Enough_Degrees_Of_Freedom",
+                "Invalid_Problem_Definition", "Invalid_Option", "Invalid_Number_Detected",
+                "Unrecoverable_Exception", "NonIpopt_Exception_Thrown", "Insufficient_Memory",
+                "Internal_Error"]
+
+
+def status_code(s):
+    return IPOPT_STATUS.index(s) if s in IPOPT_STATUS else -1
+
+
+def ipopt_extras(opti, sol=None):
+    """Per-solve extras for the npz: U (from `opti`'s U variable if the caller
+    passes it via attribute), return-status code, constraint multipliers."""
+    ex = {}
+    try:
+        st = sol.stats() if sol is not None else opti.stats()
+        ex["status_code"] = np.int32(status_code(str(st.get("return_status", ""))))
+    except Exception:
+        ex["status_code"] = np.int32(-1)
+    try:
+        ex["lam_g"] = np.asarray(sol.value(opti.lam_g) if sol is not None
+                                 else opti.debug.value(opti.lam_g), dtype=np.float64).ravel()
+    except Exception:
+        pass
+    return ex
+
+
+def _git_head():
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True,
+                                       stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return "unknown"
+
+
+def out_suffix():
+    """Filename suffix for ablation sweeps (CPU_SWEEP_SUFFIX env), so a rerun at
+    another tolerance never overwrites the 2026-08-03 headline sweep."""
+    return os.environ.get("CPU_SWEEP_SUFFIX", "")
 
 PHYS_CORES_DEFAULT = [1, 2, 4, 8, 16, 32, 64]
 SMT_CORES_DEFAULT = [2, 4, 8, 16, 32, 64, 128]
@@ -83,14 +131,22 @@ def _worker(worker_id, cpu_id, task_module, task_kwargs, task_q, result_q,
             break
         t1 = time.time()
         try:
-            X, iters, obj, success = solve(idx)
+            out = solve(idx)
         except Exception:
             result_q.put(("error", worker_id, traceback.format_exc()))
             return
         t2 = time.time()
         busy += t2 - t1
+        # solve() may return an optional 5th element: dict of per-solve extras
+        # (numpy arrays / scalars), e.g. U, IPOPT return-status code, lam_g.
+        if len(out) == 5:
+            X, iters, obj, success, extras = out
+        else:
+            X, iters, obj, success = out
+            extras = {}
         result_q.put(("solve", idx, worker_id, t1, t2, int(iters),
-                      float(obj), bool(success), np.asarray(X)))
+                      float(obj), bool(success), np.asarray(X),
+                      {k: np.asarray(v) for k, v in extras.items()}))
 
     result_q.put(("done", worker_id, time.time(), busy))
 
@@ -169,6 +225,7 @@ def run_config(*, task_module, task_kwargs, mode, n_cores, n_total,
     busy_times = np.zeros(n_cores)
     finish_times = np.zeros(n_cores)
 
+    extra_arrays = {}
     n_solved = 0
     n_done = 0
     pbar = tqdm(total=n_total, desc=f"{desc} {mode} P={n_cores}",
@@ -176,7 +233,12 @@ def run_config(*, task_module, task_kwargs, mode, n_cores, n_total,
     while n_done < n_cores:
         msg = result_q.get()
         if msg[0] == "solve":
-            _, idx, wid, t1, t2, it, obj, succ, X = msg
+            _, idx, wid, t1, t2, it, obj, succ, X, extras = msg
+            for k, v in extras.items():
+                if k not in extra_arrays:
+                    fill = -1 if v.dtype.kind in "iu" else np.nan
+                    extra_arrays[k] = np.full((n_total,) + v.shape, fill, dtype=v.dtype if v.dtype.kind in "iu" else np.float64)
+                extra_arrays[k][idx] = v
             X_all[idx] = X
             times[idx] = t2 - t1
             t_start[idx] = t1 - t0
@@ -225,6 +287,14 @@ def run_config(*, task_module, task_kwargs, mode, n_cores, n_total,
         throughput=np.array([throughput]),
         n_cores=np.array([n_cores]),
         N_RUNS=np.array([n_total]),
+        ipopt_tol=np.array([float(os.environ.get("IPOPT_TOL", "1e-6"))]),
+        metadata=np.array([json.dumps(dict(
+            loadavg_at_save=list(os.getloadavg()),  # host contention indicator (1/5/15 min)
+            ipopt_tol=float(os.environ.get("IPOPT_TOL", "1e-6")), mode=mode, n_cores=n_cores,
+            n_total=n_total, cpu_ids=cpu_ids, hostname=socket.gethostname(),
+            commit=_git_head(), argv=sys.argv, t0_epoch=t0, wall=wall,
+            ipopt_status_legend=IPOPT_STATUS))]),
+        **{("U_all" if k == "U" else k): v for k, v in extra_arrays.items()},
         **(extra_npz or {}),
     )
     print(f"  [{mode} {n_cores:3d}] saved {out_path}")
@@ -253,6 +323,10 @@ def parse_sweep_args(description, extra_args=()):
     ap.add_argument("--n-total", type=int, default=None,
                     help="override solve count per config (default: "
                          "max(N_RUNS_jaxipm, 5*P))")
+    ap.add_argument("--tol", type=float, default=None,
+                    help="IPOPT tol override (sets IPOPT_TOL for the workers; "
+                         "default: driver default 1e-6). Also sets the output "
+                         "suffix _tol<value> unless CPU_SWEEP_SUFFIX is given.")
     ap.add_argument("--resume", action="store_true",
                     help="skip configs whose completed npz already exists "
                          "(default: run everything fresh, overwriting)")
@@ -260,6 +334,9 @@ def parse_sweep_args(description, extra_args=()):
         ap.add_argument(name, **kwargs)
     args = ap.parse_args()
 
+    if args.tol is not None:
+        os.environ["IPOPT_TOL"] = repr(float(args.tol))
+        os.environ.setdefault("CPU_SWEEP_SUFFIX", f"_tol{args.tol:g}")
     modes = args.modes.split(",") if args.modes else MODES_DEFAULT
     for m in modes:
         assert m in ("phys", "smt"), f"unknown mode {m!r}"

@@ -136,13 +136,27 @@ if __name__ == "__main__":
         p = json.load(f)
 
     # Allow disabling hot-restart from the env (for ablation runs).
-    # if os.environ.get("HOT_RESTART", "1") == "0":
-    #     p["hot_restarting"] = False
-    #     print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
-    # # DEBUG_MODE retains per-problem iter_buffer (otherwise iter_count is per-slot).
-    # if os.environ.get("JAXIPM_DEBUG", "0") == "1":
-    #     p["DEBUG_MODE"] = True
-    #     print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 — iter_buffer enabled")
+    import os
+    # Rebuttal hooks (Appendix A of the experiment spec). All default to the
+    # paper configuration; set only for ablations.
+    #   HOT_RESTART=0        -> hot_restarting=False (warm-start / fusion-only mode)
+    #   JAXIPM_DEBUG=1       -> DEBUG_MODE=True (per-problem iter/term buffers;
+    #                           depresses throughput -- never for timing runs)
+    #   JAXIPM_IR_NSTEPS=k   -> iterative-refinement depth override (paper: 0)
+    #   JAXIPM_OUT_SUFFIX=s  -> appended to the results filename so ablation
+    #                           runs never overwrite the headline npz files
+    if os.environ.get("HOT_RESTART", "1") == "0":
+        p["hot_restarting"] = False
+        print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
+    if os.environ.get("JAXIPM_DEBUG", "0") == "1":
+        p["DEBUG_MODE"] = True
+        print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 -- iter_buffer enabled")
+    if os.environ.get("JAXIPM_IR_NSTEPS"):
+        p["ir_nsteps"] = int(os.environ["JAXIPM_IR_NSTEPS"])
+        print(f"[jaxipm] ir_nsteps={p['ir_nsteps']} via JAXIPM_IR_NSTEPS")
+    OUT_SUFFIX = os.environ.get("JAXIPM_OUT_SUFFIX", "")
+    if OUT_SUFFIX:
+        print(f"[jaxipm] results filename suffix: {OUT_SUFFIX!r}")
 
     from time import time
     os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
@@ -206,9 +220,15 @@ if __name__ == "__main__":
             return jnp.concatenate([states.flatten(), inputs.flatten()])
 
         def calc_next_problem(rng_key, sol):
-            # Pick a random idx into the pre-generated array. Sol is unused
-            # (random sampling already provides diversity; no need to derive idx).
-            new_idx = jax.random.randint(rng_key, (), 0, N_RUNS)
+            # Same hot-restart rule as the navigation driver: decode which pool
+            # member this slot just solved from its converged x0 (an equality
+            # constraint, so the match is exact), then step N_batch through the
+            # pool, wrapping at the end. Slot k therefore walks k, k+N_batch,
+            # k+2*N_batch, ... exactly like nav's angle stride; rng_key unused.
+            # (Previously: jax.random.randint draw with replacement.)
+            x0_sol = sol[:13]
+            cur_idx = jnp.argmin(jnp.sum((all_x0 - x0_sol[None, :]) ** 2, axis=1))
+            new_idx = (cur_idx + N_batch) % N_RUNS
             new_x0 = all_x0[new_idx]
             new_xr = all_xr[new_idx]
             new_warm = build_warm_start(new_x0, new_xr)
@@ -264,10 +284,12 @@ if __name__ == "__main__":
         total_time = t2 - t1
         print(f"JAXIPM: warm wall time {total_time*1000:.1f} ms")
 
-        # final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out
-        final_state, solution_buffer, write_idx = tp_out
-        iter_buffer = None
-        term_buffer = None
+        if len(tp_out) >= 5:
+            final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out[:5]
+        else:
+            final_state, solution_buffer, write_idx = tp_out
+            iter_buffer = None
+            term_buffer = None
 
         n_collected = min(int(write_idx), int(solution_buffer.shape[0]))
         print(f"JAXIPM: collected {n_collected} (write_idx reported {int(write_idx)})")
@@ -310,7 +332,7 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"jaxipm_v{AVG_VEL:.1f}_results.npz")
+        out_path = os.path.join(logs_dir, f"jaxipm_v{AVG_VEL:.1f}{OUT_SUFFIX}_results.npz")
         if term_buffer is not None:
             terms = np.asarray(term_buffer)[:n_collected].astype(np.int32)
         else:

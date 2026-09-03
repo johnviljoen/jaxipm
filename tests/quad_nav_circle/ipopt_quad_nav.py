@@ -1,5 +1,6 @@
 import time, json
 import casadi as ca
+import os
 import numpy as np
 from tests.quad_casadi_dynamics import f_ca
 
@@ -104,17 +105,24 @@ class QuadcopterNavMPC:
         # State bounds (for non-inf bounds)
         x_lb = self.qp["x_lb"]
         x_ub = self.qp["x_ub"]
-        for k in range(N):
-            for i in range(self.nx):
-                if not np.isinf(x_lb[i]):
-                    self.opti.subject_to(self.X[i, k] >= x_lb[i])
-                if not np.isinf(x_ub[i]):
-                    self.opti.subject_to(self.X[i, k] <= x_ub[i])
+        # NAV_NO_BOUNDS=1 (rebuttal, 2026-08-29): drop the state and motor-speed
+        # bounds so the model matches jaxipm_quad_nav.quadcopter_nav, which
+        # returns +-inf variable bounds for the nav problem.
+        self.no_bounds = __import__('os').environ.get("NAV_NO_BOUNDS", "0") == "1"
+        if not self.no_bounds:
+            for k in range(N):
+                for i in range(self.nx):
+                    if not np.isinf(x_lb[i]):
+                        self.opti.subject_to(self.X[i, k] >= x_lb[i])
+                    if not np.isinf(x_ub[i]):
+                        self.opti.subject_to(self.X[i, k] <= x_ub[i])
 
-        # Control bounds (motor speeds)
-        self.opti.subject_to(self.opti.bounded(
-            self.qp["minWmotor"], self.U, self.qp["maxWmotor"]
-        ))
+            # Control bounds (motor speeds)
+            self.opti.subject_to(self.opti.bounded(
+                self.qp["minWmotor"], self.U, self.qp["maxWmotor"]
+            ))
+        else:
+            print("NAV_NO_BOUNDS=1: state and motor bounds DISABLED (jaxipm nav model parity)")
 
         # Obstacle avoidance constraints
         # (x - xc)^2 + (y - yc)^2 >= r^2 * multiplier
@@ -128,7 +136,7 @@ class QuadcopterNavMPC:
         opts = {
             'ipopt.print_level': 0,
             'print_time': 0,
-            'ipopt.tol': 1e-6,
+            'ipopt.tol': float(__import__('os').environ.get('IPOPT_TOL', '1e-6')),  # rebuttal run D: IPOPT_TOL=1e-8
             'ipopt.warm_start_init_point': 'yes',
         }
         self.opti.solver('ipopt', opts)
@@ -334,7 +342,7 @@ if __name__ == "__main__":
     RADIUS = float(np.sqrt(4.0**2 + 4.0**2))  # ~5.657 m, matches default x0=[4,4,0]
     N_horizon = N_HORIZON
     Ts = TS
-    N_RUNS = tmp["N_RUNS_seq"]
+    N_RUNS = int(__import__("os").environ.get("IPOPT_N_RUNS", tmp["N_RUNS_seq"]))  # rebuttal: pool override
     for SECTOR_DEG in tmp["init_angles"]:
 
         sector_half_rad = np.deg2rad(SECTOR_DEG) / 2.0
@@ -357,6 +365,7 @@ if __name__ == "__main__":
         mpc = QuadcopterNavMPC(x0_default, N=N_horizon, Ts=Ts)
 
         X_all = np.full((N_RUNS, N_horizon, 13), np.nan, dtype=np.float64)
+        U_all = np.full((N_RUNS, N_horizon - 1, 4), np.nan, dtype=np.float64)  # rebuttal run H: inputs for c(z)
         times = np.zeros(N_RUNS, dtype=np.float64)
         iters = np.zeros(N_RUNS, dtype=np.int32)
         obj_vals = np.full(N_RUNS, np.nan, dtype=np.float64)
@@ -373,6 +382,7 @@ if __name__ == "__main__":
                 sol = mpc.solve_cold(x0_new=x0_i)
                 t2 = time_mod.time()
                 X_all[i] = mpc.x_sol.T
+                U_all[i] = np.asarray(mpc.u_sol).T
                 times[i] = t2 - t1
                 try:
                     iters[i] = sol.stats().get("iter_count", -1)
@@ -404,9 +414,11 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"casadi_sector{int(SECTOR_DEG)}_results.npz")
+        out_path = os.path.join(logs_dir, f"casadi_sector{int(SECTOR_DEG)}{os.environ.get('IPOPT_OUT_SUFFIX', '')}_results.npz")
         np.savez(
             out_path,
+            U_all=U_all, ipopt_tol=np.array([float(os.environ.get("IPOPT_TOL", "1e-6"))]),
+            loadavg_at_save=np.array(os.getloadavg()),
             X_all=X_all,
             times=times,
             iters=iters,

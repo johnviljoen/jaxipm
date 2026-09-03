@@ -46,6 +46,8 @@ with open("jaxipm/params.json") as _f:
 
 p["VALIDATION_MODE"] = True
 p["ir_nsteps"] = 100  # iterative refinement depth for this validation run
+if os.environ.get("CORR_INSTANCE") is not None or os.environ.get("CORR_DEBUG"):
+    p["DEBUG_MODE"] = True  # branch ids per step (Figure 6 / run J legend)
 # os.environ["CUDA_VISIBLE_DEVICES"] = str(p["gpu_id"])
 # os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
@@ -84,7 +86,18 @@ OBS_YC = [o["yc"] for o in OBSTACLES]
 OBS_R = [o["r"] for o in OBSTACLES]
 
 HERE = pathlib.Path(__file__).resolve().parent
-IPOPT_LOGS = HERE / "ipopt_logs"
+# run-J extension: CORR_INSTANCE=<k> (nav pool member, CORR_SECTOR deg) reads the
+# per-instance IPOPT dumps ipopt_logs_inst<k>/ and writes jaxipm_correctness_inst<k>.npz
+CORR_INSTANCE = os.environ.get("CORR_INSTANCE")
+# extra user constraint args of the instance (nav pool member: x0_ic) -- load_state must
+# build args with the same pytree structure as jaxipm's own state
+_USER_C_ARGS = ()
+if CORR_INSTANCE is not None:
+    from tests.rebuttal.problems import nav_pool_instance as _npi
+    _USER_C_ARGS = (jnp.asarray(_npi(float(os.environ.get("CORR_SECTOR", "90")), int(CORR_INSTANCE))[0]),)
+_SUF = f"_inst{CORR_INSTANCE}" if CORR_INSTANCE is not None else ""
+_OUT_SUF = _SUF + os.environ.get("CORR_OUT_SUFFIX", "")  # output npz suffix (never overwrite the paper npz)
+IPOPT_LOGS = HERE / f"ipopt_logs{_SUF}"
 LOGS = HERE / "logs"
 
 
@@ -398,6 +411,7 @@ def load_state(iter_num, cp, base_dir=None, kkt_token=None, ls_token=None):
         needs_resto_init=jnp.array([[0]]),
         needs_regular_init=jnp.array([[0]]),
         should_exit_resto=jnp.array([[0]]),
+        branch_id=jnp.array([[-1]]),
     )
 
     # ---- state : top-level scalars (mu/tau/mu_max/init_inf) + adfs ----
@@ -431,7 +445,7 @@ def load_state(iter_num, cp, base_dir=None, kkt_token=None, ls_token=None):
     arg0_mu = _sc(resto_ref, "ref_mu", float(jnp.asarray(mu).reshape(-1)[0])) if in_resto else mu
     args = (
         (arg0_mu, x_ref[: cp.nx], dr_x[: cp.nx], jnp.array([df])),  # (1,1)
-        (dc,),
+        (dc, *_USER_C_ARGS),
         (dd,),
     )
 
@@ -705,11 +719,17 @@ def main():
     f, c, d, x_L, x_U, d_L, d_U, x0, gt, aux = quadcopter_nav(N=N_HORIZON)
     z_to_xu, xu_to_z, quad_params, *_ = aux
     f_args, c_args, d_args = (), (), ()
+    if CORR_INSTANCE is not None:
+        from tests.rebuttal.problems import nav_pool_instance
+        _x0_ic, _z_warm = nav_pool_instance(float(os.environ.get("CORR_SECTOR", "90")), int(CORR_INSTANCE))
+        x0 = jnp.asarray(_z_warm)
+        c_args = (jnp.asarray(_x0_ic),)
+        print(f"correctness_test/jaxipm: pool instance {CORR_INSTANCE}: x0_ic={_x0_ic[:3]}")
 
     # calc_next_problem is unused by the single-solve path but keeps the
     # initializer signature identical to the throughput scripts.
     _x0 = jnp.asarray(x0).squeeze()
-    calc_next_problem = lambda key, sol: (_x0, (), (), ())
+    calc_next_problem = lambda key, sol: (_x0, (), c_args, ())
 
     cp = initialize_common_problem(
         f, c, d, x_L, x_U, d_L, d_U, x0, p, [f_args, c_args, d_args],
@@ -740,6 +760,7 @@ def main():
     jx_resto = [_flag(state, lambda t: t.fl.in_restoration)]
     jx_free = [_flag(state, lambda t: t.fl.free_mu_mode)]
     own_terms = [int(TerminationCode.CONTINUE)]
+    jx_branch = [-1]
 
     ipopt_state_raw = load_state(0, cp, kkt_token=state.ic.token,
                                  ls_token=state.ls_token)  # reused as pass idx's iter-idx dump
@@ -753,6 +774,7 @@ def main():
         # start — the measured object. Its iterate/mu are compared against
         # IPOPT's iter idx+1 below; nothing of it flows into the next pass.
         own_state, own_term = _post(orig, result, cp)
+        jx_branch.append(int(np.asarray(result.fl.branch_id).squeeze()) if p.get("DEBUG_MODE") else -1)
         rows.append(compare(jaxipm_iterate(own_state, cp),
                             load_ipopt_iterate(str(IPOPT_LOGS), min(idx + 1, n_ipopt - 1), cp)))
         jx_resto.append(_flag(own_state, lambda t: t.fl.in_restoration))
@@ -976,7 +998,7 @@ def main():
     x_sol, u_sol = z_to_xu(jnp.asarray(z_sol))
     x_sol = np.asarray(x_sol)
     nan_rows = np.full(n_cmp, np.nan)
-    out = LOGS / "jaxipm_correctness.npz"
+    out = LOGS / f"jaxipm_correctness{_OUT_SUF}.npz"
     np.savez(
         out,
         z_sol=z_sol,
@@ -991,6 +1013,7 @@ def main():
         ip_resto=np.asarray(ip_resto, dtype=np.int8),
         jx_resto=np.asarray(jx_resto, dtype=np.int8),
         jx_free_mu=np.asarray(jx_free, dtype=np.int8),
+        jx_branch=np.asarray(jx_branch[:n_cmp] + [-1] * max(0, n_cmp - len(jx_branch)), dtype=np.int8),
         # per-component SINGLE-STEP diffs. The *_shift1 keys were an open-loop
         # alignment diagnostic; meaningless under per-step injection -> NaN.
         **{f"d_{c}": np.array([r[c] for r in rows]) for c in _COMPONENTS + ["mu", "tau"]},

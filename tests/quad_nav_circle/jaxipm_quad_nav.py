@@ -115,7 +115,9 @@ def quadcopter_nav(N=30):
 
     aux = [z_to_xu, xu_to_z, quad_params, state0[0]]
 
-    return f, c, d, z_L, z_U, d_L, d_U, z_init, gt, aux
+    # BUG FIX 2026-08-30: previously returned the all-inf placeholders z_L, z_U, so the
+    # jaxipm nav problem had NO state/motor bounds while IPOPT/MadNLP enforced them.
+    return f, c, d, x_L, x_U, d_L, d_U, z_init, gt, aux
 
 if __name__ == "__main__":
    
@@ -127,16 +129,27 @@ if __name__ == "__main__":
     # throughput iter_buffer (otherwise iters are saved as -1).
     p["DEBUG_MODE"] = True
 
-    # import os
-    # if os.environ.get("HOT_RESTART", "1") == "0":
-    #     p["hot_restarting"] = False
-    #     print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
-    # if os.environ.get("JAXIPM_DEBUG", "0") == "1":
-    #     p["DEBUG_MODE"] = True
-    #     print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 — iter_buffer enabled")
-    # from time import time
-    # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
-    # os.environ['CUDA_VISIBLE_DEVICES'] = str(p["gpu_id"])
+    import os
+    # Rebuttal hooks (Appendix A of the experiment spec). All default to the
+    # paper configuration; set only for ablations.
+    #   HOT_RESTART=0        -> hot_restarting=False (warm-start / fusion-only mode)
+    #   JAXIPM_DEBUG=1       -> DEBUG_MODE=True (per-problem iter/term buffers;
+    #                           depresses throughput -- never for timing runs)
+    #   JAXIPM_IR_NSTEPS=k   -> iterative-refinement depth override (paper: 0)
+    #   JAXIPM_OUT_SUFFIX=s  -> appended to the results filename so ablation
+    #                           runs never overwrite the headline npz files
+    if os.environ.get("HOT_RESTART", "1") == "0":
+        p["hot_restarting"] = False
+        print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
+    if os.environ.get("JAXIPM_DEBUG", "0") == "1":
+        p["DEBUG_MODE"] = True
+        print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 -- iter_buffer enabled")
+    if os.environ.get("JAXIPM_IR_NSTEPS"):
+        p["ir_nsteps"] = int(os.environ["JAXIPM_IR_NSTEPS"])
+        print(f"[jaxipm] ir_nsteps={p['ir_nsteps']} via JAXIPM_IR_NSTEPS")
+    OUT_SUFFIX = os.environ.get("JAXIPM_OUT_SUFFIX", "")
+    if OUT_SUFFIX:
+        print(f"[jaxipm] results filename suffix: {OUT_SUFFIX!r}")
 
     import jax
     import equinox as eqx
@@ -151,7 +164,7 @@ if __name__ == "__main__":
 
     # translation tooling
     from jaxipm.utils.problem_format_utils import custom_to_cyipopt_format
-    from jaxipm.solver import solve_throughput
+    from jaxipm.solver import solve_throughput, make_batch_state
     from jaxipm.initialization import initialize_common_problem, initialize_problem_regular
 
     f, c, d, x_L, x_U, d_L, d_U, x0, gt, aux = quadcopter_nav()
@@ -237,7 +250,9 @@ if __name__ == "__main__":
                     return leaves[0]
             return jax.tree.map(stack_leaves, *states)
 
-        batch_tp = stack_states_tp([state] * N_batch)
+        # make_batch_state stacks AND re-mints the spineax tokens (plain
+        # stacking leaves B distinct token ids, rejected by spineax >= 0.0.5).
+        batch_tp = make_batch_state(cp, [state] * N_batch)
 
         # Inject the first N_batch unique x0_ic values into c_args[1] of each element
         first_batch_x0 = all_x0_starts[:N_batch]  # (N_batch, 13)
@@ -274,8 +289,8 @@ if __name__ == "__main__":
         total_time = t2 - t1
         print(f"Throughput (warm):      {total_time*1000:.1f} ms")
 
-        if len(tp_out) == 5:
-            final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out
+        if len(tp_out) >= 5:
+            final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out[:5]
         else:
             final_state, solution_buffer, write_idx = tp_out
             iter_buffer = None
@@ -314,7 +329,7 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"jaxipm_sector{int(SECTOR_DEG)}_results.npz")
+        out_path = os.path.join(logs_dir, f"jaxipm_sector{int(SECTOR_DEG)}{OUT_SUFFIX}_results.npz")
         if term_buffer is not None:
             terms = np.asarray(term_buffer)[:n_collected].astype(np.int32)
         else:

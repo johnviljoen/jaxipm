@@ -4,6 +4,30 @@ ENV["CUDA_VISIBLE_DEVICES"] = get(ENV, "CUDA_VISIBLE_DEVICES", "1")
 using ExaModels, MadNLP, MadNLPGPU, CUDA, NPZ, ProgressMeter, Statistics, JSON
 
 CUDA.allowscalar(false)
+
+# ── Rebuttal hooks (run E). Defaults reproduce the paper driver exactly. ──────
+#   MADNLP_TOL=1e-8        solver tolerance override
+#   MADNLP_N_RUNS=2000     pool size override (use N_RUNS_jaxipm for the shared pool)
+#   MADNLP_REPEATS=5       timed repeats of the whole pool after the warmup solve
+#   MADNLP_OUT_SUFFIX=_x   appended to the results filename (never clobber paper npz)
+const MADNLP_TOL     = parse(Float64, get(ENV, "MADNLP_TOL", "1e-8"))
+const MADNLP_REPEATS = parse(Int, get(ENV, "MADNLP_REPEATS", "1"))
+const MADNLP_SUFFIX  = get(ENV, "MADNLP_OUT_SUFFIX", "")
+#   MADNLP_NO_BOUNDS=1     drop state + motor bounds (parity with jaxipm_quad_nav, which has +-Inf bounds)
+const MADNLP_NO_BOUNDS = get(ENV, "MADNLP_NO_BOUNDS", "0") == "1"
+MADNLP_NO_BOUNDS && println("MADNLP_NO_BOUNDS=1: state and motor bounds DISABLED")
+function _madnlp_meta_write(out_path::String, extra::Dict)
+    git(args...) = try strip(read(Cmd(["git", "-C", @__DIR__, args...]), String)) catch; "unknown" end
+    d = Dict{String,Any}("tol" => MADNLP_TOL, "repeats" => MADNLP_REPEATS, "no_bounds" => MADNLP_NO_BOUNDS,
+        "jaxipm_release_commit" => git("rev-parse", "HEAD"),
+        "dirty" => git("status", "--porcelain") != "",
+        "hostname" => gethostname(), "gpu" => string(CUDA.device()),
+        "cuda_visible_devices" => get(ENV, "CUDA_VISIBLE_DEVICES", ""),
+        "julia" => string(VERSION), "argv" => ARGS, "script" => @__FILE__)
+    merge!(d, extra)
+    d["madnlp_status_legend"] = Dict(string(Int(st)) => string(st) for st in instances(MadNLP.Status))
+    open(out_path * ".meta.json", "w") do io; JSON.print(io, d, 2); end
+end
 println("Using GPU: ", CUDA.device())
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,16 +98,16 @@ function build_model(x0_ic_vec::Vector{Float64} = x0_init; backend = nothing)
         x0_vals[base + 4] = 1.0  # q0 = 1
         # state bounds
         for i in 1:nx
-            lvar[base + i] = x_lb[i]
-            uvar[base + i] = x_ub[i]
+            lvar[base + i] = MADNLP_NO_BOUNDS ? -Inf : x_lb[i]
+            uvar[base + i] = MADNLP_NO_BOUNDS ?  Inf : x_ub[i]
         end
     end
     for k in 1:(N-1)
         base = n_x_vars + (k - 1) * nu
         for j in 1:nu
             x0_vals[base + j] = w_hover
-            lvar[base + j] = qp.minWmotor
-            uvar[base + j] = qp.maxWmotor
+            lvar[base + j] = MADNLP_NO_BOUNDS ? -Inf : qp.minWmotor
+            uvar[base + j] = MADNLP_NO_BOUNDS ?  Inf : qp.maxWmotor
         end
     end
 
@@ -135,7 +159,7 @@ function solve_once(nlp; print_level=MadNLP.INFO)
         equality_treatment       = MadNLP.RelaxEquality,
         fixed_variable_treatment = MadNLP.RelaxBound,
         dual_initialized         = true,
-        tol                      = 1e-8,
+        tol                      = MADNLP_TOL,
         print_level              = print_level,
     )
     result = MadNLP.solve!(solver)
@@ -174,6 +198,7 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
     println("Warmup solve (incl. JIT): $(t_jit * 1000) ms")
 
     X_all    = fill(NaN, N_RUNS, N, nx)
+    z_all    = zeros(0, 0)   # rebuttal run H: raw solution vectors (X blocks then U blocks)
     times    = zeros(Float64, N_RUNS)
     iters    = zeros(Int32, N_RUNS)
     obj_vals = fill(NaN, N_RUNS)
@@ -182,7 +207,16 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
 
     println("\nRunning $N_RUNS sequential cold solves over linspaced angles in [0, π/2]")
     t0 = time()
-    prog = Progress(N_RUNS; desc="MadNLP nav", showspeed=true)
+    desc_str = "MadNLP nav"
+    rep_start = zeros(Float64, MADNLP_REPEATS); rep_stop = zeros(Float64, MADNLP_REPEATS)
+    rep_wall = zeros(Float64, MADNLP_REPEATS); rep_throughput = zeros(Float64, MADNLP_REPEATS)
+    rep_solve_wall = zeros(Float64, MADNLP_REPEATS)   # sum of timed solve calls only (model build excluded)
+    status_codes = fill(Int32(-1), N_RUNS)
+    total_time = 0.0
+    for rep in 1:MADNLP_REPEATS
+    println("[VARIANCE] rep $rep/$MADNLP_REPEATS START epoch=$(time())")
+    t0 = time()   # per-repeat wall clock (fix: was set once before the repeat loop)
+    prog = Progress(N_RUNS; desc=desc_str, showspeed=true)
     for i in 1:N_RUNS
         x0_i = x0_from_angle(angles[i], RADIUS)
         starts[i, :] = x0_i
@@ -196,6 +230,7 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
 
         times[i] = t2 - t1
         iters[i] = result.iter
+        status_codes[i] = Int32(Int(result.status))
         success[i] = (result.status == MadNLP.SOLVE_SUCCEEDED)
         try
             obj_vals[i] = result.objective
@@ -207,6 +242,8 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
         end
 
         z_sol = Array(result.solution)
+        if size(z_all, 2) == 0; z_all = fill(NaN, N_RUNS, length(z_sol)); end
+        z_all[i, :] = z_sol
         if !any(isnan, z_sol)
             X_flat = z_sol[1:N*nx]
             X_all[i, :, :] = reshape(X_flat, nx, N)' |> collect
@@ -217,12 +254,25 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
     end
     finish!(prog)
     total_time = time() - t0
+    rep_start[rep] = t0; rep_stop[rep] = time(); rep_wall[rep] = total_time
+    rep_throughput[rep] = N_RUNS / total_time
+    rep_solve_wall[rep] = sum(times)
+    println("[VARIANCE] rep $rep/$MADNLP_REPEATS STOP  epoch=$(time())  wall=$(round(total_time, digits=2))s  throughput=$(round(N_RUNS / total_time, digits=3)) solves/s  success=$(sum(success))/$N_RUNS")
+    end  # repeats
+    if MADNLP_REPEATS > 1
+        println("[VARIANCE] throughput mean=$(round(mean(rep_throughput), digits=3)) std=$(round(std(rep_throughput), digits=3)) over $MADNLP_REPEATS repeats")
+    end
 
     logs_dir = joinpath(@__DIR__, "logs")
     mkpath(logs_dir)
-    out_path = joinpath(logs_dir, "madnlp_sector$(Int(SECTOR_DEG))_results.npz")
+    out_path = joinpath(logs_dir, "madnlp_sector$(Int(SECTOR_DEG))$(MADNLP_SUFFIX)_results.npz")
     npzwrite(out_path,
              Dict("X_all" => X_all,
+                  "z_all" => z_all,
+                  "status_codes" => status_codes,
+                  "rep_start_epoch" => rep_start, "rep_stop_epoch" => rep_stop,
+                  "rep_wall" => rep_wall, "rep_throughput" => rep_throughput,
+                  "rep_solve_wall" => rep_solve_wall,
                   "times" => times,
                   "iters" => iters,
                   "obj_vals" => obj_vals,
@@ -236,6 +286,7 @@ function run_sector(SECTOR_DEG::Float64, N_RUNS::Int)
                   "radius" => [RADIUS],
                   "sector_deg" => [SECTOR_DEG]))
 
+    _madnlp_meta_write(out_path, Dict("N_RUNS" => N_RUNS, "solve_only_throughput" => N_RUNS ./ rep_solve_wall))
     n_succ = sum(success)
     mean_solve_ms = n_succ > 0 ? mean(times[success]) * 1000 : 0.0
     println("\nMadNLP nav: saved $out_path")
@@ -245,7 +296,7 @@ end
 # Sweep over every init_angles sector width in test_params.json (e.g. 90°, 180°),
 # saving one npz per sector — matching the Python ipopt/jaxipm loop convention.
 function main()
-    N_RUNS = Int(_tp["N_RUNS_seq"])
+    N_RUNS = parse(Int, get(ENV, "MADNLP_N_RUNS", string(_tp["N_RUNS_seq"])))
     for SECTOR_DEG in _tp["init_angles"]
         println("\n================ init_angle (sector) = $(SECTOR_DEG)° ================")
         run_sector(Float64(SECTOR_DEG), N_RUNS)

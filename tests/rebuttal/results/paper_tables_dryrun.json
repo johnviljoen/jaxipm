@@ -1,0 +1,821 @@
+{
+ "nav 90\u00b0": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     6.612672897234721,
+     0.3859454956730436
+    ],
+    "cores": 1.5077125468692996,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     516.9531324179819,
+     20.286290041936127
+    ],
+    "eq": 8.90258089469853e-09,
+    "iters": [
+     23.8765,
+     74
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     280.69744879539655,
+     13.858403014965345
+    ],
+    "cores": 64.0,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     516.9531324179819,
+     20.286290041936127
+    ],
+    "eq": 8.90258089469853e-09,
+    "iters": [
+     23.8765,
+     74
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     2.2497983234890526,
+     0.28200454718043927
+    ],
+    "cores": 0.5129618859067477,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     516.9944124651705,
+     20.30206316977971
+    ],
+    "eq": 2.0212445051015493e-08,
+    "iters": [
+     43.31,
+     125
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     15.621644095494494,
+     1.6284632406180723
+    ],
+    "cores": 3.56178948687347,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_fresh_rep1_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_fresh_rep2_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_fresh_rep3_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_fresh_rep4_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     516.1635005840119,
+     20.158511103147475
+    ],
+    "eq": null,
+    "iters": [
+     58.505,
+     465
+    ],
+    "quality": {
+     "n_collected": 2000,
+     "n_success": 2000,
+     "N": 2000,
+     "cost_mean": 516.1635005840119,
+     "cost_sd": 20.158511103147475,
+     "iters_mean": 58.505,
+     "iters_max": 465,
+     "pool_idx_unique": 2000,
+     "eq_inf_max": null,
+     "file": "tests/quad_nav_circle/logs/jaxipm_ablation_sector90_ws_ir0_b500_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "$90^\\circ$ sector",
+  "per_core": 4.385897637428071
+ },
+ "nav 180\u00b0": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     6.987513625274671,
+     0.2829603038802755
+    ],
+    "cores": 1.4384273749106622,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     507.5711046060502,
+     17.142610877929595
+    ],
+    "eq": 9.894444041869122e-09,
+    "iters": [
+     21.4915,
+     71
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     310.8956905421476,
+     14.753112372360526
+    ],
+    "cores": 64.0,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     507.5711046060502,
+     17.142610877929595
+    ],
+    "eq": 9.894444041869122e-09,
+    "iters": [
+     21.4915,
+     71
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     2.7437076647203953,
+     0.022015490083456855
+    ],
+    "cores": 0.5648109506950527,
+    "succ": [
+     2000,
+     2000
+    ],
+    "cost": [
+     507.5910104311194,
+     17.16209183682951
+    ],
+    "eq": 2.0182984838967855e-08,
+    "iters": [
+     32.2485,
+     184
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     15.676351126582114,
+     2.312743371040839
+    ],
+    "cores": 3.227083882544977,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_fresh_rep1_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_fresh_rep2_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_fresh_rep3_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_fresh_rep4_results.npz",
+     "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     1999,
+     2000
+    ],
+    "cost": [
+     506.8159444408088,
+     17.07328186042603
+    ],
+    "eq": null,
+    "iters": [
+     61.99499749874938,
+     427
+    ],
+    "quality": {
+     "n_collected": 1999,
+     "n_success": 1999,
+     "N": 2000,
+     "cost_mean": 506.8159444408088,
+     "cost_sd": 17.07328186042603,
+     "iters_mean": 61.99499749874938,
+     "iters_max": 427,
+     "pool_idx_unique": 1999,
+     "eq_inf_max": null,
+     "file": "tests/quad_nav_circle/logs/jaxipm_ablation_sector180_ws_ir0_b500_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "$180^\\circ$ sector",
+  "per_core": 4.857745164721056
+ },
+ "track v\u0304=1.0": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     6.059023975743385,
+     0.3028164025611974
+    ],
+    "cores": 1.652594666811098,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     265.70897613884944,
+     98.66716335450383
+    ],
+    "eq": 9.710448445332531e-09,
+    "iters": [
+     25.401,
+     77
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     234.64769809274836,
+     9.475405191400197
+    ],
+    "cores": 64.0,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     265.70897613884944,
+     98.66716335450383
+    ],
+    "eq": 9.710448445332531e-09,
+    "iters": [
+     25.401,
+     77
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     2.969813306994182,
+     0.9894338241310207
+    ],
+    "cores": 0.8100145588153186,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     261.70102892134366,
+     92.03256258205117
+    ],
+    "eq": 2.0145619394895675e-08,
+    "iters": [
+     37.961,
+     84
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     4.780116553446059,
+     0.16249267950226598
+    ],
+    "cores": 1.3037735375508561,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_fresh_rep1_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_fresh_rep2_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_fresh_rep3_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_fresh_rep4_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     993,
+     1000
+    ],
+    "cost": [
+     249.39589875563874,
+     79.3939592913721
+    ],
+    "eq": null,
+    "iters": [
+     53.88721047331319,
+     492
+    ],
+    "quality": {
+     "n_collected": 993,
+     "n_success": 993,
+     "N": 1000,
+     "cost_mean": 249.39589875563874,
+     "cost_sd": 79.3939592913721,
+     "iters_mean": 53.88721047331319,
+     "iters_max": 492,
+     "pool_idx_unique": 993,
+     "eq_inf_max": null,
+     "file": "tests/quad_track_avoid/logs/jaxipm_ablation_v1.0_ws_ir0_b250_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "$\\bar{v} = 1.0$ m/s",
+  "per_core": 3.666370282699193
+ },
+ "track v\u0304=1.5": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     4.609588876696935,
+     0.26612220699918815
+    ],
+    "cores": 1.591685695878578,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     556.6939675375104,
+     140.88378450123207
+    ],
+    "eq": 9.777592568926963e-09,
+    "iters": [
+     30.323,
+     71
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     185.346698077702,
+     3.8224329833798594
+    ],
+    "cores": 64.0,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     556.6939675375104,
+     140.88378450123207
+    ],
+    "eq": 9.777592568926963e-09,
+    "iters": [
+     30.323,
+     71
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     2.01581959117535,
+     0.012290169351544982
+    ],
+    "cores": 0.6960601681781088,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     555.8121421610387,
+     138.32557010506892
+    ],
+    "eq": 2.006828503375857e-08,
+    "iters": [
+     47.409,
+     116
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     4.523410998739377,
+     0.16233240080532452
+    ],
+    "cores": 1.561928574513667,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_fresh_rep1_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_fresh_rep2_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_fresh_rep3_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_fresh_rep4_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     968,
+     1000
+    ],
+    "cost": [
+     543.5639862600065,
+     123.42062931992876
+    ],
+    "eq": null,
+    "iters": [
+     54.804752066115704,
+     479
+    ],
+    "quality": {
+     "n_collected": 968,
+     "n_success": 968,
+     "N": 1000,
+     "cost_mean": 543.5639862600065,
+     "cost_sd": 123.42062931992876,
+     "iters_mean": 54.804752066115704,
+     "iters_max": 479,
+     "pool_idx_unique": 968,
+     "eq_inf_max": null,
+     "file": "tests/quad_track_avoid/logs/jaxipm_ablation_v1.5_ws_ir0_b250_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "$\\bar{v} = 1.5$ m/s",
+  "per_core": 2.8960421574640938
+ },
+ "track v\u0304=2.0": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     2.5520946829526316,
+     0.1370668449315817
+    ],
+    "cores": 1.5490505507642833,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     1146.662991265059,
+     126.93524905597039
+    ],
+    "eq": 4.590992030983898e-09,
+    "iters": [
+     47.807,
+     125
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     105.44140062335688,
+     3.69617579808217
+    ],
+    "cores": 64.0,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     1146.662991265059,
+     126.93524905597039
+    ],
+    "eq": 4.590992030983898e-09,
+    "iters": [
+     47.807,
+     125
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     1.6487000051569685,
+     0.0022750490722909943
+    ],
+    "cores": 1.0007150863535892,
+    "succ": [
+     1000,
+     1000
+    ],
+    "cost": [
+     1147.4841570752696,
+     121.17222454818248
+    ],
+    "eq": 2.0025456848316026e-08,
+    "iters": [
+     57.779,
+     136
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     5.35963272790441,
+     0.21578420888304756
+    ],
+    "cores": 3.253148123583431,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_fresh_rep1_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_fresh_rep2_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_fresh_rep3_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_fresh_rep4_results.npz",
+     "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     858,
+     1000
+    ],
+    "cost": [
+     1142.5250632089428,
+     128.93829692192344
+    ],
+    "eq": null,
+    "iters": [
+     47.47202797202797,
+     134
+    ],
+    "quality": {
+     "n_collected": 858,
+     "n_success": 858,
+     "N": 1000,
+     "cost_mean": 1142.5250632089428,
+     "cost_sd": 128.93829692192344,
+     "iters_mean": 47.47202797202797,
+     "iters_max": 134,
+     "pool_idx_unique": 858,
+     "eq_inf_max": null,
+     "file": "tests/quad_track_avoid/logs/jaxipm_ablation_v2.0_ws_ir0_b250_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "$\\bar{v} = 2.0$ m/s",
+  "per_core": 1.6475218847399513
+ },
+ "multi N=2": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     0.3326670780617171,
+     0.01335951085042798
+    ],
+    "cores": 1.5746153287871352,
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     756.3108553293413,
+     1.1445241430249513e-13
+    ],
+    "eq": 3.10287351368288e-11,
+    "iters": [
+     178.0,
+     178
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     13.52120267516339,
+     0.6801244283310404
+    ],
+    "cores": 64.0,
+    "succ": [
+     320,
+     320
+    ],
+    "cost": [
+     756.3108553293413,
+     1.1386489082636544e-13
+    ],
+    "eq": 3.10287351368288e-11,
+    "iters": [
+     178.0,
+     178
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     0.944857815597485,
+     0.06633009756706787
+    ],
+    "cores": 4.472301884011831,
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     756.3107510432799,
+     2.658112638727282e-07
+    ],
+    "eq": 1.9996566866487197e-08,
+    "iters": [
+     147.85333333333332,
+     174
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     12.013766570246963,
+     0.6737446935150161
+    ],
+    "cores": 56.86484249719409,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_fresh_rep1_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_fresh_rep2_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_fresh_rep3_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_fresh_rep4_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     756.3108562890194,
+     2.8001588774310096e-11
+    ],
+    "eq": null,
+    "iters": [
+     136.93333333333334,
+     182
+    ],
+    "quality": {
+     "n_collected": 75,
+     "n_success": 75,
+     "N": 75,
+     "cost_mean": 756.3108562890194,
+     "cost_sd": 2.8001588774310096e-11,
+     "iters_mean": 136.93333333333334,
+     "iters_max": 182,
+     "pool_idx_unique": 1,
+     "eq_inf_max": null,
+     "file": "tests/quad_multi_swap/logs/jaxipm_ablation_2_ws_ir0_b75_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "2 quadrotors",
+  "per_core": 0.21126879179942798
+ },
+ "multi N=4": {
+  "rows": {
+   "IPOPT-default": {
+    "thr": [
+     0.10960684261094769,
+     0.0034246539686794797
+    ],
+    "cores": 1.3415260260133757,
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     1537.6882912586964,
+     2.2890482860499026e-13
+    ],
+    "eq": 9.199974115858822e-12,
+    "iters": [
+     217.0,
+     217
+    ]
+   },
+   "IPOPT-64": {
+    "thr": [
+     5.2289987604241315,
+     0.21332002220045962
+    ],
+    "cores": 64.0,
+    "succ": [
+     320,
+     320
+    ],
+    "cost": [
+     1537.7158739690697,
+     0.0
+    ],
+    "eq": 7.329032380987144e-09,
+    "iters": [
+     207.0,
+     207
+    ]
+   },
+   "MadNLP": {
+    "thr": [
+     0.4281615341739351,
+     0.00526878728861173
+    ],
+    "cores": 5.240456049545746,
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     1537.7038415987815,
+     0.013734041631539047
+    ],
+    "eq": 1.9996734029495522e-08,
+    "iters": [
+     282.94666666666666,
+     328
+    ]
+   },
+   "jaxipm-SL": {
+    "thr": [
+     2.008416720774463,
+     0.1395949528092273
+    ],
+    "cores": 24.58188957748762,
+    "n_reps": 5,
+    "fresh_files": [
+     "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_fresh_rep1_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_fresh_rep2_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_fresh_rep3_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_fresh_rep4_results.npz",
+     "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_fresh_rep5_results.npz"
+    ],
+    "succ": [
+     75,
+     75
+    ],
+    "cost": [
+     1537.7026362590493,
+     0.01387311343892435
+    ],
+    "eq": null,
+    "iters": [
+     218.16,
+     268
+    ],
+    "quality": {
+     "n_collected": 75,
+     "n_success": 75,
+     "N": 75,
+     "cost_mean": 1537.7026362590493,
+     "cost_sd": 0.01387311343892435,
+     "iters_mean": 218.16,
+     "iters_max": 268,
+     "pool_idx_unique": 1,
+     "eq_inf_max": null,
+     "file": "tests/quad_multi_swap/logs/jaxipm_ablation_4_ws_ir0_b75_dbg_results.npz"
+    }
+   },
+   "jaxipm-IL": {
+    "thr": null,
+    "cores": null,
+    "n_reps": 0,
+    "fresh_files": [],
+    "succ": null,
+    "cost": null,
+    "eq": null,
+    "iters": null,
+    "quality": null
+   }
+  },
+  "header": "4 quadrotors",
+  "per_core": 0.08170310563162705
+ }
+}

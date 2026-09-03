@@ -54,6 +54,11 @@ for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ[_v] = "1"
 
 import argparse
+import json
+import socket
+import sys
+from tests.casadi_cpu_throughput_common import (
+    IPOPT_STATUS, ipopt_extras, out_suffix, _git_head)
 import contextlib
 import io
 import json
@@ -104,7 +109,12 @@ def _worker(worker_id, cpu_id, n_quads, task_q, result_q, barrier):
         os.sched_setaffinity(0, {cpu_id})
 
         from tests.quad_multi_swap.ipopt_multi_swap import (
-            QuadcopterMultiSwapMPC, check_success)
+            QuadcopterMultiSwapMPC, R_DEFAULT, check_success, swap_pool, tmp)
+
+        # Varied-IC pool (2026-08-31): task idx -> formation rotation
+        # phi_(idx % n_pool), the same pool every solver consumes.
+        n_pool = tmp["N_RUNS_jaxipm"]
+        _, _, pool_starts, pool_goals = swap_pool(n_quads, n_pool, R_DEFAULT)
 
         # Constructor builds the Opti graph and performs the untimed warmup
         # solve; silence its "Initial solve time" print (P of them is noise).
@@ -132,10 +142,17 @@ def _worker(worker_id, cpu_id, n_quads, task_q, result_q, barrier):
         iters = -1
         obj = np.nan
         X = None
+        extras = {}
         try:
-            sol = mpc.solve_cold()
+            sol = mpc.solve_cold(starts=pool_starts[idx % n_pool],
+                                 goals=pool_goals[idx % n_pool])
             t2 = time.time()
             X = np.stack([x.T for x in mpc.x_sols])       # (n_quads, N, 13)
+            extras = ipopt_extras(mpc.opti, sol)
+            try:
+                extras["U"] = np.stack([np.asarray(u).T for u in mpc.u_sols])  # (n_quads, N-1, 4)
+            except Exception:
+                pass
             try:
                 iters = int(sol.stats().get("iter_count", -1))
             except Exception:
@@ -147,6 +164,7 @@ def _worker(worker_id, cpu_id, n_quads, task_q, result_q, barrier):
             converged = True
         except RuntimeError:
             t2 = time.time()
+            extras = ipopt_extras(mpc.opti, None)
             try:
                 X = np.stack([np.asarray(mpc.opti.debug.value(Xv)).T
                               for Xv in mpc.Xs])
@@ -166,7 +184,7 @@ def _worker(worker_id, cpu_id, n_quads, task_q, result_q, barrier):
 
         busy += t2 - t1
         result_q.put(("solve", idx, worker_id, t1, t2, iters, obj,
-                      bool(succ), X))
+                      bool(succ), X, {k: np.asarray(v) for k, v in extras.items()}))
 
     result_q.put(("done", worker_id, time.time(), busy))
 
@@ -175,7 +193,7 @@ def _out_path(n_quads, mode, n_cores):
     logs_dir = os.path.join(os.path.dirname(__file__), "logs")
     return os.path.join(
         logs_dir,
-        f"casadi_cpu_throughput_{n_quads}_{mode}_c{n_cores:03d}_results.npz")
+        f"casadi_cpu_throughput_{n_quads}_{mode}_c{n_cores:03d}{out_suffix()}_results.npz")
 
 
 def _load_completed(n_quads, mode, n_cores, n_total):
@@ -254,13 +272,20 @@ def run_config(n_quads, mode, n_cores, n_total):
     busy_times = np.zeros(n_cores)
     finish_times = np.zeros(n_cores)
 
+    extra_arrays = {}
     n_solved = 0
     n_done = 0
     pbar = tqdm(total=n_total, desc=f"{mode} P={n_cores}", unit="solve")
     while n_done < n_cores:
         msg = result_q.get()
         if msg[0] == "solve":
-            _, idx, wid, t1, t2, it, obj, succ, X = msg
+            _, idx, wid, t1, t2, it, obj, succ, X, extras = msg
+            for k, v in extras.items():
+                if k not in extra_arrays:
+                    fill = -1 if v.dtype.kind in "iu" else np.nan
+                    extra_arrays[k] = np.full((n_total,) + v.shape, fill,
+                                              dtype=v.dtype if v.dtype.kind in "iu" else np.float64)
+                extra_arrays[k][idx] = v
             X_all[idx] = X
             times[idx] = t2 - t1
             t_start[idx] = t1 - t0
@@ -294,6 +319,10 @@ def run_config(n_quads, mode, n_cores, n_total):
                            for i in range(n_quads)])
     goals_arr = np.array([goal_xyz(i, n_quads, R_DEFAULT)
                           for i in range(n_quads)])
+    from tests.quad_multi_swap.ipopt_multi_swap import swap_pool
+    with open("tests/quad_multi_swap/test_params.json") as _f:
+        _n_pool = json.load(_f)["N_RUNS_jaxipm"]
+    pool_phis, pool_psis, pool_starts, pool_goals = swap_pool(n_quads, _n_pool, R_DEFAULT)
 
     out_path = _out_path(n_quads, mode, n_cores)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -316,10 +345,22 @@ def run_config(n_quads, mode, n_cores, n_total):
         N=np.array([N_HORIZON]),
         Ts=np.array([TS]),
         N_RUNS=np.array([n_total]),
+        ipopt_tol=np.array([float(os.environ.get("IPOPT_TOL", "1e-6"))]),
+        metadata=np.array([json.dumps(dict(
+            loadavg_at_save=list(os.getloadavg()),
+            ipopt_tol=float(os.environ.get("IPOPT_TOL", "1e-6")), mode=mode, n_cores=n_cores,
+            n_total=n_total, hostname=socket.gethostname(), commit=_git_head(), argv=sys.argv,
+            ipopt_status_legend=IPOPT_STATUS))]),
+        **{("U_all" if k == "U" else k): v for k, v in extra_arrays.items()},
         N_quads=np.array([n_quads]),
         R=np.array([R_DEFAULT]),
         starts=starts_arr,
         goals=goals_arr,
+        pool_phis=pool_phis,
+        pool_psis=pool_psis,
+        pool_starts=pool_starts,
+        pool_goals=pool_goals,
+        inst_idx=np.arange(n_total) % _n_pool,
     )
     print(f"  [{mode} {n_cores:3d}] saved {out_path}")
     print(f"  [{mode} {n_cores:3d}] wall={wall:.2f}s  "
@@ -350,10 +391,15 @@ def main():
     ap.add_argument("--n-total", type=int, default=None,
                     help="override solve count per config (default: "
                          "max(N_RUNS_jaxipm, 5*P))")
+    ap.add_argument("--tol", type=float, default=None,
+                    help="IPOPT tol override (IPOPT_TOL for workers; output suffix _tol<v>)")
     ap.add_argument("--resume", action="store_true",
                     help="skip configs whose completed npz already exists "
                          "(default: run everything fresh, overwriting)")
     args = ap.parse_args()
+    if args.tol is not None:
+        os.environ["IPOPT_TOL"] = repr(float(args.tol))
+        os.environ.setdefault("CPU_SWEEP_SUFFIX", f"_tol{args.tol:g}")
 
     with open("tests/quad_multi_swap/test_params.json") as f:
         params = json.load(f)

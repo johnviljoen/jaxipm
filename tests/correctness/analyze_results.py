@@ -81,8 +81,8 @@ LOGS = os.path.join(HERE, "logs")
 FIGURES = os.path.join(HERE, "figures")
 os.makedirs(FIGURES, exist_ok=True)
 
-NPZ = os.path.join(LOGS, "jaxipm_correctness.npz")
-OUT_PATH = os.path.join(FIGURES, "validation_state_ecdf.pdf")
+NPZ = os.path.join(LOGS, os.environ.get("CORR_NPZ", "jaxipm_correctness.npz"))
+OUT_PATH = os.path.join(FIGURES, os.environ.get("CORR_FIG", "validation_state_ecdf.pdf"))
 
 # State components saved per iteration in jaxipm_correctness.npz (d_<comp>).
 COMPONENTS = ["x", "s", "y_c", "y_d", "z_L", "z_U", "v_L", "v_U", "mu", "tau"]
@@ -92,6 +92,7 @@ TAIL_FRAC = 0.10       # drop the last 10% of iters (near-convergence ill-cond.)
 MASK_RESTO_EXIT = True  # exclude the resto-EXIT boundary iter (pipeline offset;
                         # matches the mk3 viewer's gating of it.* at that pass)
 
+BRANCH_COLORS = None  # set in main() when branch ids are available
 CAT_COLORS = [
     ("regular", "tab:blue"),
     ("restoration", "tab:red"),
@@ -130,6 +131,25 @@ def main():
     dev = np.nanmax(comp, axis=0)                                            # (n,)
     jx_resto = np.asarray(d["jx_resto"]).astype(int)
     cats = categorize(jx_resto)
+    # Branch-type legend (paper Figure 6): use the per-step branch id when the npz
+    # was produced with DEBUG_MODE (CORR_DEBUG=1): 0 full step, 1 SOC, 2 watchdog,
+    # 3 tiny step, 4 SFR, 5 restoration entry, 6 backtracked; +8 = inside restoration.
+    if "jx_branch" in d.files and np.any(np.asarray(d["jx_branch"]) >= 0):
+        br = np.asarray(d["jx_branch"]).astype(int)
+        base = np.where(br >= 0, br % 8, -1)
+        names = {0: "full step", 1: "second-order correction", 2: "watchdog", 3: "tiny step",
+                 4: "soft feasibility restoration", 5: "restoration entry", 6: "backtracking"}
+        cats = np.array([("restoration exit" if c == "restoration exit" else
+                          ("initial point" if b < 0 else
+                           names.get(b, "regular") + (" (resto)" if r == 1 and b in (0, 1, 6) else "")))
+                         for c, b, r in zip(cats, base, jx_resto)])
+        global BRANCH_COLORS
+        BRANCH_COLORS = [("full step", "#0072B2"), ("full step (resto)", "#E69F00"),
+                         ("second-order correction", "#D55E00"), ("second-order correction (resto)", "#F0E442"),
+                         ("backtracking", "#CC79A7"), ("backtracking (resto)", "#999999"),
+                         ("watchdog", "#56B4E9"), ("tiny step", "#000000"),
+                         ("soft feasibility restoration", "#8B4513"), ("restoration entry", "#009E73"),
+                         ("restoration exit", "tab:purple"), ("initial point", "0.5")]
 
     n = dev.size
     keep = np.isfinite(dev)
@@ -155,11 +175,17 @@ def main():
 
     fig, ax = plt.subplots(figsize=(8.0, 5.0))
     ax.semilogx(x, y, color="0.6", lw=1.2, drawstyle="steps-post", zorder=1)
-    for cat, color in CAT_COLORS:
+    base_colors = BRANCH_COLORS if BRANCH_COLORS is not None else list(CAT_COLORS)
+    known = [c for c, _ in base_colors]
+    extra = [c for c in dict.fromkeys(cat_sorted.tolist()) if c not in known]
+    palette = ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00",
+               "#F0E442", "#999999", "#000000"]
+    cat_colors = list(base_colors) + [(c, palette[i % len(palette)]) for i, c in enumerate(extra)]
+    for cat, color in cat_colors:
         sel = cat_sorted == cat
         if sel.any():
             ax.semilogx(x[sel], y[sel], ls="none", marker="o", ms=4,
-                        color=color, zorder=2, label=cat)
+                        color=color, zorder=2, label=f"{cat} ({int(sel.sum())})")
 
     ax.set_xlabel("single-step deviation")
     ax.set_ylabel("empirical CDF")

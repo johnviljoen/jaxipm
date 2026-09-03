@@ -156,6 +156,10 @@ class CommonProblem(eqx.Module):
     nstqf: NonSharedTraceQuantityFunctions
     nstqfr: NonSharedTraceQuantityFunctions
     calc_next_problem: Callable
+    # Optional sequential-pool reseed hook (idx, sol) -> same tuple as
+    # calc_next_problem; used by solve_throughput only when
+    # p["sequential_pool"] is True (each pool index injected exactly once).
+    calc_next_problem_seq: Callable = None
     # # condensed KKT fields (populated only when p["kkt_system"] == "condensed")
     # condensed_jptr: Array   # (N_schur, 4) scatter indices for J_all'*D*J_all: [csr_idx, constraint_idx, Jd_k, Jd_l]
     # condensed_hptr: Array   # (N_hess, 2) scatter indices for W entries: [csr_idx, W_data_idx]
@@ -254,6 +258,10 @@ class IterateFlags(eqx.Module):
     needs_resto_init: Array  # fallback_activated & not in_restoration -> init resto in post_process
     needs_regular_init: Array # flag (0 or 1) to trigger hot restart initialization
     should_exit_resto: Array  # True when restoration converged and we should return to regular
+    branch_id: Array  # DEBUG_MODE census only (rebuttal run F): control-flow branch taken by the
+                      # last execute_search: 0 full step accepted, 1 SOC, 2 WD, 3 TS, 4 SFR,
+                      # 5 full-resto entry, 6 backtracked line search;
+                      # +8 when the iteration ran inside the restoration phase. Not used by the algorithm.
 
 # Mostly intermediate values - some state.
 # the state for the watchdog for an individual optimization in the batch

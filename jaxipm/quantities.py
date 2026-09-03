@@ -4,6 +4,7 @@ regular quantities at the start of the opt and then adds these to cp."""
 
 import equinox as eqx
 import jax
+from jaxipm.utils.kscope import KScope
 import jax.experimental.sparse as jsparse
 import jax.numpy as jnp
 import numpy as np
@@ -621,10 +622,16 @@ def generate_non_shared_trace_functions(funcs, general_dims, phase_dims, kkt, p,
             + p["kappa_d"]
             * mu
             * (
-                jnp.linalg.norm(sxL[:nxL] * sxL_mask, ord=1)
-                + jnp.linalg.norm(sxU * sxU_mask, ord=1)
-                + jnp.linalg.norm(sdL * sdL_mask, ord=1)
-                + jnp.linalg.norm(sdU * sdU_mask, ord=1)
+                # FIX 2026-08-30: slacks are [n,1] columns, masks are [n] — the old
+                # `sxL[:nxL] * sxL_mask` broadcast to an [nxL,nxL] outer product and
+                # ord=1 became the MATRIX 1-norm (= ||s||_1 * max(mask)), which was
+                # both ~2x per-iteration GPU cost (48-59% of device time on bounded
+                # problems) and numerically wrong vs IPOPT's damping (sums ALL
+                # slacks when any damping index is set, instead of only damped ones).
+                jnp.linalg.norm(sxL[:nxL].reshape(-1) * sxL_mask, ord=1)
+                + jnp.linalg.norm(sxU.reshape(-1) * sxU_mask, ord=1)
+                + jnp.linalg.norm(sdL.reshape(-1) * sdL_mask, ord=1)
+                + jnp.linalg.norm(sdU.reshape(-1) * sdU_mask, ord=1)
             )
         )
     
@@ -1029,6 +1036,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
 
     # _perts = (_pert_x, _pert_s, _pert_c, _pert_d)
     # Build LHS with zero perturbation - inertia correction adds dxs via diagonal indices
+    _ks = KScope(); _ks("kkt_assembly")
     perts = (jnp.array(0.0), jnp.array(0.0), jnp.zeros(1), jnp.zeros(1))
     f, c, d = fun_outs
     grad_lag_x, slacks, theta, avrg_compl, grad_lag_s = quantities
@@ -1040,7 +1048,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     # rebuild, i.e. an unrequested cuDSS re-analysis).
     ic = eqx.tree_at(lambda t: t.token, ic,
                      order_token_after(ic.token, it.x))
-    ls_token = order_token_after(ls_token, it.x)
+    ls_token = order_token_after(ls_token, it.x, it.y_c, it.y_d)  # y_c/y_d depend on the init-LS solve output: forces the consuming factorize below AFTER that solve (2026-08-30 multi rebuild-storm fix)
 
     # calculate everything we can ahead of time for the mu calc ----------------
     resto = fl.in_restoration.squeeze()
@@ -1118,6 +1126,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     # _aug_LHS_upper_triangular = nstqf.kkt.calc_aug_pd_LHS_given_deltas(it, _perts, args) # .sum_duplicates()
     # aug_LHS_upper_triangular = nstqf.kkt.calc_aug_pd_LHS(it, args) # .sum_duplicates()
 
+    _ks("ls_mult_factor_solve")
     # LS mults via dedicated solver (runs every iteration, separate from KKT)
     ls_init_lhs = cp.stqf.calc_ls_mults_LHS(jacobians)
     ls_init_csr = jsparse.BCSR.from_bcoo(ls_init_lhs)
@@ -1137,6 +1146,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     y_c_init = ls_step[cp.nx + cp.nyd : cp.nx + cp.nyd + cp.nyc]
     y_d_init = ls_step[cp.nx + cp.nyd + cp.nyc : cp.nx + cp.nyd + cp.nyc + cp.nyd]
 
+    _ks("kkt_assembly")
     # sort out the KKT systems conditionally on resto or not
     rhs_aff, rhs_cen, csr_lhs = filter_select(
         resto, (
@@ -1171,6 +1181,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
         tuple(jnp.zeros_like(x) for x in rhs_intermediates_aff)
     )
 
+    _ks("ic_loop")
     # COMMON INERTIA CORRECTION CODE - and common calls to linear solve
     step_aff, ic = solve_with_inertia_correction(csr_lhs, rhs_aff, ic, cp, fl, resto, ic_Sigma_nc, ic_Sigma_pc, ic_Sigma_nd, ic_Sigma_pd, ic_rhs_intermediates)
 
@@ -1180,6 +1191,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
         jax.debug.print("ic token/perturbed_data max|diff| (must be 0): {d}",
                         d=jnp.max(jnp.abs(ic.token.values - ic.perturbed_data)))
 
+    _ks("pre_mu_misc")
     # Recompute Sigma_inv with final ic.dxs for resto transformation (reduced -> aug)
     # IPOPT also uses sigma_tilde_inv = 1/(Sigma + delta_x) in its Solve() for the transformation
     Sigma_nc_inv_final = 1 / jnp.maximum(Sigma_nc + ic.dxs, 1e-20)
@@ -1196,6 +1208,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
         (rhs_cen,)  # regular mode doesn't depend on dxs
     )
 
+    _ks("solve_cen")
     # solve-only against the IC loop's factorization (ic.token.values == the
     # perturbed data it factorized); JAX-side IR refines against that matrix
     step_cen = cudss.solve(ic.token, rhs_cen_final.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
@@ -1203,6 +1216,7 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
     ic = eqx.tree_at(lambda t: t.token, ic,
                      order_token_after(ic.token, step_cen))
 
+    _ks("pre_mu_misc")
     if cp.p["VALIDATION_MODE"] is True:
         rrhs_aff_full_final = cp.stqf.calc_vector_to_iterate(cp.nstqfr.kkt.calc_resto_red_pd_RHS_aff(
             it, slacks, grad_lag_x, grad_lag_s, c, dms,
@@ -1287,10 +1301,12 @@ def calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, 
         y_d_init=y_d_init
     )
 
+    _ks.close()
     return cqpr, ic, ls_token
 
 def calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl):
 
+    _ks = KScope(); _ks("post_mu_rhs")
     # lets unify KKT solving across resto/regular
     rhs_full_resto = cp.stqf.calc_vector_to_iterate(
         cp.nstqfr.kkt.calc_resto_red_pd_RHS(it, mu, cqpr.slacks, cqpr.grad_lag_x, cqpr.grad_lag_s, cqpr.c, cqpr.dms, cqpr.Sigma_nc_inv, cqpr.Sigma_pc_inv, cqpr.Sigma_nd_inv, cqpr.Sigma_pd_inv)
@@ -1310,8 +1326,10 @@ def calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl):
     # 2-way RHS selection: regular or resto (LS handled by dedicated solver in calc_values_pre_mu)
     rhs = jnp.where(fl.in_restoration.squeeze(), rhs_red_resto, rhs_aug_reg)
 
+    _ks("solve_newton")
     step = cudss.solve(ic.token, rhs.flatten(), ir_nsteps=cp.p["ir_nsteps"])[:, None]
 
+    _ks("post_mu_transform")
     step_resto = step
     step_aug_reg = pad_iterate_vector(step)
 
@@ -1398,6 +1416,7 @@ def calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl):
         slack_derivatives=slack_derivatives
     )
 
+    _ks.close()
     return cqpo
 
 if __name__ == "__main__":

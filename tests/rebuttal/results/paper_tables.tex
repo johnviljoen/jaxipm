@@ -1,0 +1,87 @@
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+Solver & solves/s & instances & succ.\ [\%] & cost & $\lVert c \rVert_\infty$ & iters mean/max \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{$90^\circ$ sector}} \\
+IPOPT-default & 6.61\,$\pm$\,0.39 & 1.00 & 100 & 517.0\,$\pm$\,20.3 & $8.9\!\times\!10^{-9}$ & 23.9 / 74 \\
+IPOPT-64 & 280.7\,$\pm$\,13.9 & 42.4 & 100 & 517.0\,$\pm$\,20.3 & $8.9\!\times\!10^{-9}$ & 23.9 / 74 \\
+MadNLP & 2.25\,$\pm$\,0.28 & 0.34 & 100 & 517.0\,$\pm$\,20.3 & $2.0\!\times\!10^{-8}$ & 43.3 / 125 \\
+\textbf{jaxipm-SL} & \textbf{14.86\,$\pm$\,0.96} & \textbf{2.25} & \textbf{99.9} & \textbf{517.1\,$\pm$\,20.3} & {\boldmath$6.5\!\times\!10^{-9}$} & \textbf{69.0 / 487} \\
+\textbf{jaxipm-IL} & \textbf{89.03\,$\pm$\,1.87} & \textbf{13.5} & \textbf{100} & \textbf{518.0\,$\pm$\,20.8} & {\boldmath$9.5\!\times\!10^{-9}$} & \textbf{55.9 / 274} \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{$180^\circ$ sector}} \\
+IPOPT-default & 6.99\,$\pm$\,0.28 & 1.00 & 100 & 507.6\,$\pm$\,17.1 & $9.9\!\times\!10^{-9}$ & 21.5 / 71 \\
+IPOPT-64 & 310.9\,$\pm$\,14.8 & 44.5 & 100 & 507.6\,$\pm$\,17.1 & $9.9\!\times\!10^{-9}$ & 21.5 / 71 \\
+MadNLP & 2.74\,$\pm$\,0.02 & 0.39 & 100 & 507.6\,$\pm$\,17.2 & $2.0\!\times\!10^{-8}$ & 32.2 / 184 \\
+\textbf{jaxipm-SL} & \textbf{14.08\,$\pm$\,1.12} & \textbf{2.01} & \textbf{99.55} & \textbf{507.6\,$\pm$\,17.2} & {\boldmath$9.8\!\times\!10^{-9}$} & \textbf{71.6 / 468} \\
+\textbf{jaxipm-IL} & \textbf{95.45\,$\pm$\,1.24} & \textbf{13.7} & \textbf{100} & \textbf{507.6\,$\pm$\,16.5} & {\boldmath$6.8\!\times\!10^{-9}$} & \textbf{51.9 / 252} \\
+\bottomrule
+\end{tabular}}
+\caption{Navigation. Throughput is the mean and standard deviation over five repeated runs; instances is each solver's throughput as a multiple of one IPOPT-default instance's throughput; succ.\ is the percentage of the pool solved to tolerance; cost is the mean and standard deviation of the final objective over the successfully solved pool instances; $\lVert c \rVert_\infty$ is the largest equality-constraint violation at the returned point over the pool, evaluated with the same constraint function for every solver; iters is the mean and maximum iteration count. All solvers draw from the same pool of parameterizations and initial conditions and start from the same cold initial guess at tol $10^{-8}$.}
+\label{tab:nav-throughput}
+\end{table}
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+Solver & solves/s & instances & succ.\ [\%] & cost & $\lVert c \rVert_\infty$ & iters mean/max \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{$\bar{v} = 1.0$ m/s}} \\
+IPOPT-default & 6.06\,$\pm$\,0.30 & 1.00 & 100 & 265.7\,$\pm$\,98.7 & $9.7\!\times\!10^{-9}$ & 25.4 / 77 \\
+IPOPT-64 & 234.7\,$\pm$\,9.5 & 38.7 & 100 & 265.7\,$\pm$\,98.7 & $9.7\!\times\!10^{-9}$ & 25.4 / 77 \\
+MadNLP & 2.97\,$\pm$\,0.99 & 0.49 & 100 & 261.7\,$\pm$\,92.0 & $2.0\!\times\!10^{-8}$ & 38.0 / 84 \\
+\textbf{jaxipm-SL} & \textbf{13.00\,$\pm$\,0.71} & \textbf{2.15} & \textbf{99.2} & \textbf{249.8\,$\pm$\,79.4} & {\boldmath$1.1\!\times\!10^{-9}$} & \textbf{54.2 / 472} \\
+\textbf{jaxipm-IL} & \textbf{92.49\,$\pm$\,0.37} & \textbf{15.3} & \textbf{100} & \textbf{244.0\,$\pm$\,76.3} & {\boldmath$8.0\!\times\!10^{-9}$} & \textbf{43.1 / 181} \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{$\bar{v} = 1.5$ m/s}} \\
+IPOPT-default & 4.61\,$\pm$\,0.27 & 1.00 & 100 & 556.7\,$\pm$\,140.9 & $9.8\!\times\!10^{-9}$ & 30.3 / 71 \\
+IPOPT-64 & 185.4\,$\pm$\,3.8 & 40.2 & 100 & 556.7\,$\pm$\,140.9 & $9.8\!\times\!10^{-9}$ & 30.3 / 71 \\
+MadNLP & 2.02\,$\pm$\,0.01 & 0.44 & 100 & 555.8\,$\pm$\,138.3 & $2.0\!\times\!10^{-8}$ & 47.4 / 116 \\
+\textbf{jaxipm-SL} & \textbf{11.85\,$\pm$\,0.07} & \textbf{2.57} & \textbf{96.2} & \textbf{543.2\,$\pm$\,126.5} & {\boldmath$1.6\!\times\!10^{-9}$} & \textbf{54.3 / 494} \\
+\textbf{jaxipm-IL} & \textbf{81.76\,$\pm$\,0.37} & \textbf{17.7} & \textbf{100} & \textbf{539.2\,$\pm$\,121.4} & {\boldmath$1.9\!\times\!10^{-9}$} & \textbf{44.4 / 237} \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{$\bar{v} = 2.0$ m/s}} \\
+IPOPT-default & 2.55\,$\pm$\,0.14 & 1.00 & 100 & 1146.7\,$\pm$\,126.9 & $4.6\!\times\!10^{-9}$ & 47.8 / 125 \\
+IPOPT-64 & 105.4\,$\pm$\,3.7 & 41.3 & 100 & 1146.7\,$\pm$\,126.9 & $4.6\!\times\!10^{-9}$ & 47.8 / 125 \\
+MadNLP & 1.65\,$\pm$\,0.00 & 0.65 & 100 & 1147.5\,$\pm$\,121.2 & $2.0\!\times\!10^{-8}$ & 57.8 / 136 \\
+\textbf{jaxipm-SL} & \textbf{11.32\,$\pm$\,0.22} & \textbf{4.44} & \textbf{86.1} & \textbf{1140.5\,$\pm$\,125.3} & {\boldmath$2.7\!\times\!10^{-9}$} & \textbf{46.9 / 165} \\
+\textbf{jaxipm-IL} & \textbf{73.71\,$\pm$\,0.87} & \textbf{28.9} & \textbf{100} & \textbf{1142.4\,$\pm$\,131.5} & {\boldmath$3.7\!\times\!10^{-9}$} & \textbf{45.8 / 129} \\
+\bottomrule
+\end{tabular}}
+\caption{Per-solve throughput and solution quality on the quadrotor reference-tracking problem with three time-varying obstacles. We control difficulty by varying the average velocity $\bar{v}$ of the reference trajectory. Columns as in Table~\ref{tab:nav-throughput}.}
+\label{tab:track-avoid-throughput}
+\end{table}
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+Solver & solves/s & instances & succ.\ [\%] & cost & $\lVert c \rVert_\infty$ & iters mean/max \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{2 quadrotors}} \\
+IPOPT-default & 0.578\,$\pm$\,0.018 & 1.00 & 100 & 755.5\,$\pm$\,0.8 & $9.1\!\times\!10^{-9}$ & 112.6 / 135 \\
+IPOPT-64 & 26.38\,$\pm$\,0.98 & 45.6 & 100 & 755.5\,$\pm$\,0.8 & $9.1\!\times\!10^{-9}$ & 112.7 / 135 \\
+MadNLP & 1.07\,$\pm$\,0.14 & 1.84 & 100 & 755.5\,$\pm$\,0.8 & $2.0\!\times\!10^{-8}$ & 127.7 / 162 \\
+\textbf{jaxipm-SL} & \textbf{17.31\,$\pm$\,0.46} & \textbf{29.9} & \textbf{100} & \textbf{755.5\,$\pm$\,0.8} & {\boldmath$2.4\!\times\!10^{-11}$} & \textbf{115.7 / 176} \\
+\textbf{jaxipm-IL} & \textbf{18.42\,$\pm$\,0.20} & \textbf{31.8} & \textbf{100} & \textbf{755.5\,$\pm$\,0.8} & {\boldmath$1.4\!\times\!10^{-11}$} & \textbf{113.6 / 182} \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{4 quadrotors}} \\
+IPOPT-default & 0.289\,$\pm$\,0.008 & 1.00 & 100 & 1529.7\,$\pm$\,4.7 & $6.8\!\times\!10^{-9}$ & 95.5 / 159 \\
+IPOPT-64 & 13.99\,$\pm$\,0.13 & 48.4 & 100 & 1529.7\,$\pm$\,4.7 & $6.8\!\times\!10^{-9}$ & 93.3 / 140 \\
+MadNLP & 0.596\,$\pm$\,0.008 & 2.06 & 100 & 1529.7\,$\pm$\,4.7 & $2.0\!\times\!10^{-8}$ & 184.1 / 217 \\
+\textbf{jaxipm-SL} & \textbf{2.62\,$\pm$\,0.03} & \textbf{9.06} & \textbf{95} & \textbf{1533.9\,$\pm$\,8.3} & {\boldmath$5.4\!\times\!10^{-11}$} & \textbf{241.7 / 498} \\
+\textbf{jaxipm-IL} & \textbf{4.54\,$\pm$\,0.05} & \textbf{15.7} & \textbf{100} & \textbf{1533.7\,$\pm$\,8.9} & {\boldmath$3.9\!\times\!10^{-11}$} & \textbf{227.3 / 484} \\
+\bottomrule
+\end{tabular}}
+\caption{Per-solve throughput and solution quality on the multi-quadrotor consensus problem, where every quadrotor maintains a minimum separation from every other in the fleet. Columns as in Table~\ref{tab:nav-throughput}.}
+\label{tab:multi-swap-throughput}
+\end{table}

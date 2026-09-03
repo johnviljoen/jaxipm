@@ -1,0 +1,505 @@
+{
+ "label": "multi_q2_b75",
+ "scenario": "multi",
+ "variant": "2",
+ "N_batch": 75,
+ "warm_solves": 150,
+ "profile_iters": 10,
+ "timing_iters": 30,
+ "wall_ms": {
+  "median": 0.05578631850949023,
+  "min": 0.04263237598934211,
+  "max": 0.6587103010097053,
+  "all": [
+   658.7103010097053,
+   57.83910400350578,
+   105.70417300914414,
+   52.3098070116248,
+   50.168468995252624,
+   50.211810012115166,
+   65.62835301156156,
+   57.230064005125314,
+   58.11950899078511,
+   47.462031012400985,
+   57.195994013454765,
+   51.305280008818954,
+   55.77467801049352,
+   59.18451800243929,
+   56.74205601098947,
+   61.60010100575164,
+   51.11678599496372,
+   111.38936300994828,
+   56.70435499632731,
+   63.099877996137366,
+   54.830220993608236,
+   42.63237598934211,
+   49.52890699496493,
+   55.79795900848694,
+   55.366309999953955,
+   103.9199520018883,
+   54.195059987250715,
+   54.10683900117874,
+   51.239007007097825,
+   45.34435400273651
+  ]
+ },
+ "device_ms_per_iter": 53.859232399999996,
+ "kernels_per_iter": 2015.1,
+ "regions_ms": {
+  "unscoped": 0.3636434,
+  "search_ls_first": 0.845913,
+  "search_sfr_setup": 5.9339368,
+  "search_wd_socinit": 0.27119170000000004,
+  "memcpy": 1.217492,
+  "search_soc": 21.1545049,
+  "cudss_analysis": 1.9911819,
+  "cudss_solve": 1.7503985,
+  "cudss_factorize": 9.9833555,
+  "search_bt": 3.8128517000000004,
+  "search_select": 0.0312803,
+  "pp_resto_init": 0.39057390000000003,
+  "pp_derivs": 0.8957513,
+  "pp_quantities": 2.0352861,
+  "pp_mu_update": 2.1744934,
+  "pre_mu_misc": 0.1047907,
+  "kkt_assembly": 0.5047547,
+  "ic_loop": 0.2640241,
+  "pp_select_term": 0.0976614,
+  "hr_restart": 0.007456,
+  "post_mu_transform": 0.014208,
+  "post_mu_rhs": 0.0118815,
+  "ls_mult_factor_solve": 0.0026016
+ },
+ "custom_calls_ms": {
+  "cudss::copy_csr_columns_ker": 0.00056,
+  "cudss::radix_sort_ker": 0.1147974,
+  "cudss::trans_nnz_per_row_ker": 0.0074656,
+  "offsets_par_ker": 1.0127088,
+  "cudss::trans_columns_ker": 0.007472,
+  "cudss::xadj_ker": 0.000416,
+  "cudss::adjncy_ker": 0.0023584,
+  "cudss::dependency_map_ker": 0.0435363,
+  "cudss::nnz_per_col_ker": 0.22754660000000002,
+  "cudss::supernode_map_offsets_ker": 0.0021249,
+  "cudss::offsets_ker": 0.0012897,
+  "cudss::supernode_map_ker": 0.0039296,
+  "cudss::supernode_dependant_ker": 0.0001728,
+  "cudss::nnz_count_ker": 0.0005407999999999999,
+  "cudss::set_default_ker": 0.0001473,
+  "cudss::csc_rows_ker": 0.15237520000000002,
+  "cudss::define_superpanel_ker": 0.0672771,
+  "cudss::updates_offsets_ker": 0.0021088,
+  "cudss::blocks_ker": 0.0021504000000000002,
+  "cudss::updates_ker": 0.0018655999999999998,
+  "cudss::compute_hybrid_minimum_chunk_size_ker": 0.012828899999999999,
+  "cudss::map_offsets_ker": 0.0009216000000000001,
+  "cudss::map_ker": 0.051312199999999995,
+  "cudss::modify_update_ker": 0.0156257,
+  "cudss::count_dep_fwd_bwd_ker": 0.0049537,
+  "cudss::fwd_bwd_order_step_1_ker": 0.0076448,
+  "cudss::fwd_bwd_order_step_2_ker": 0.016847900000000002,
+  "cudss::copy_matrix_ker": 0.1140616,
+  "cudss::factorize_ker": 7.4692189,
+  "cudss::independent_ker": 0.0115072,
+  "cudss::plain_map_ker": 0.011830799999999999,
+  "cudss::factorize_v3_ker": 2.5141366,
+  "cudss::perm_ker": 0.0341572,
+  "cudss::fwd_ker": 0.807725,
+  "cudss::diag_ker": 0.0386404,
+  "cudss::bwd_ker": 0.9272971999999999,
+  "cudss::upd_marker_bwd_ker": 0.0104226,
+  "cudss::copy_and_convert_device_device_ker": 0.0104,
+  "cudss::return_lu_diag_ker": 0.0145603
+ },
+ "custom_calls_per_iter": {
+  "cudss::copy_csr_columns_ker": 0.1,
+  "cudss::radix_sort_ker": 0.4,
+  "cudss::trans_nnz_per_row_ker": 0.1,
+  "offsets_par_ker": 0.6,
+  "cudss::trans_columns_ker": 0.1,
+  "cudss::xadj_ker": 0.1,
+  "cudss::adjncy_ker": 0.1,
+  "cudss::dependency_map_ker": 1.0,
+  "cudss::nnz_per_col_ker": 0.2,
+  "cudss::supernode_map_offsets_ker": 0.1,
+  "cudss::offsets_ker": 0.1,
+  "cudss::supernode_map_ker": 0.1,
+  "cudss::supernode_dependant_ker": 0.1,
+  "cudss::nnz_count_ker": 0.1,
+  "cudss::set_default_ker": 0.1,
+  "cudss::csc_rows_ker": 1.0,
+  "cudss::define_superpanel_ker": 0.1,
+  "cudss::updates_offsets_ker": 0.1,
+  "cudss::blocks_ker": 0.1,
+  "cudss::updates_ker": 0.1,
+  "cudss::compute_hybrid_minimum_chunk_size_ker": 0.1,
+  "cudss::map_offsets_ker": 0.1,
+  "cudss::map_ker": 0.1,
+  "cudss::modify_update_ker": 0.1,
+  "cudss::count_dep_fwd_bwd_ker": 0.2,
+  "cudss::fwd_bwd_order_step_1_ker": 3.3,
+  "cudss::fwd_bwd_order_step_2_ker": 5.4,
+  "cudss::copy_matrix_ker": 5.4,
+  "cudss::factorize_ker": 5.4,
+  "cudss::independent_ker": 5.4,
+  "cudss::plain_map_ker": 5.4,
+  "cudss::factorize_v3_ker": 5.4,
+  "cudss::perm_ker": 13.8,
+  "cudss::fwd_ker": 13.8,
+  "cudss::diag_ker": 6.9,
+  "cudss::bwd_ker": 13.8,
+  "cudss::upd_marker_bwd_ker": 6.9,
+  "cudss::copy_and_convert_device_device_ker": 6.6,
+  "cudss::return_lu_diag_ker": 3.3
+ },
+ "branch_unique_ms": 31.1724851,
+ "linalg_ms": 13.9915616,
+ "fusion_tax_frac": 0.5787770027706522,
+ "top_kernels": [
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_fusion_40",
+   "ms_per_iter": 19.6306019
+  },
+  {
+   "region": "cudss_factorize",
+   "kernel": "void cudss::factorize_ker<long, double, int, double, 32, 1, 0, 0, 1, 0, 16, 32>(",
+   "ms_per_iter": 7.4692189
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "input_reduce_fusion_140",
+   "ms_per_iter": 4.566258299999999
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_concatenate_fusion",
+   "ms_per_iter": 2.7289762000000004
+  },
+  {
+   "region": "cudss_factorize",
+   "kernel": "void cudss::factorize_v3_ker<long, double, int, double, 128, 8, 1, 0, 0, 1, 1, 1",
+   "ms_per_iter": 2.5141366
+  },
+  {
+   "region": "pp_quantities",
+   "kernel": "input_reduce_fusion_138",
+   "ms_per_iter": 1.5228517
+  },
+  {
+   "region": "cudss_solve",
+   "kernel": "void cudss::bwd_ker<long, double, int, 32, 32, 16, 2, 16, 1, 0, 16, 1, 1, 32, 32",
+   "ms_per_iter": 0.9272971999999999
+  },
+  {
+   "region": "cudss_solve",
+   "kernel": "void cudss::fwd_ker<long, double, int, 32, 1, 0, 32, 1, 16, 32, 16, 1, 1, 32>(un",
+   "ms_per_iter": 0.807725
+  },
+  {
+   "region": "memcpy",
+   "kernel": "MemcpyD2D",
+   "ms_per_iter": 0.5396732
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion",
+   "ms_per_iter": 0.47359009999999996
+  },
+  {
+   "region": "search_soc",
+   "kernel": "loop_concatenate_fusion_1",
+   "ms_per_iter": 0.4713623
+  },
+  {
+   "region": "search_soc",
+   "kernel": "loop_concatenate_fusion_2",
+   "ms_per_iter": 0.4617625
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion_1",
+   "ms_per_iter": 0.4398007
+  },
+  {
+   "region": "search_ls_first",
+   "kernel": "input_log_reduce_fusion_6",
+   "ms_per_iter": 0.34390190000000004
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, int, int, 128, 1>(long, long*, int*, int*, int*, int)",
+   "ms_per_iter": 0.3308943
+  },
+  {
+   "region": "search_bt",
+   "kernel": "input_concatenate_fusion_3",
+   "ms_per_iter": 0.3162886
+  },
+  {
+   "region": "search_bt",
+   "kernel": "input_log_reduce_fusion_1",
+   "ms_per_iter": 0.29951140000000004
+  },
+  {
+   "region": "search_ls_first",
+   "kernel": "loop_concatenate_fusion_28",
+   "ms_per_iter": 0.2481034
+  },
+  {
+   "region": "search_wd_socinit",
+   "kernel": "loop_concatenate_fusion_27",
+   "ms_per_iter": 0.2430859
+  },
+  {
+   "region": "memcpy",
+   "kernel": "MemcpyD2H",
+   "ms_per_iter": 0.23926820000000001
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "input_reduce_fusion_129",
+   "ms_per_iter": 0.23762360000000002
+  },
+  {
+   "region": "pp_derivs",
+   "kernel": "loop_concatenate_fusion_25",
+   "ms_per_iter": 0.2324651
+  },
+  {
+   "region": "memcpy",
+   "kernel": "memcpy32_post",
+   "ms_per_iter": 0.2192393
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, int, 128, 2>(long, long*, long*, int*, int*, in",
+   "ms_per_iter": 0.1756617
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, long, 128, 2>(long, long*, long*, long*, int*, ",
+   "ms_per_iter": 0.1748776
+  },
+  {
+   "region": "pp_derivs",
+   "kernel": "loop_concatenate_fusion_3",
+   "ms_per_iter": 0.17136089999999998
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, long, 128, 1>(long, long*, long*, long*, int*, ",
+   "ms_per_iter": 0.1657096
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<int, int, int, 128, 1>(int, int*, int*, int*, int*, int)",
+   "ms_per_iter": 0.1655656
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "loop_concatenate_fusion_18",
+   "ms_per_iter": 0.1585738
+  },
+  {
+   "region": "pp_derivs",
+   "kernel": "loop_concatenate_fusion_7",
+   "ms_per_iter": 0.15608070000000002
+  },
+  {
+   "region": "memcpy",
+   "kernel": "Memset 3",
+   "ms_per_iter": 0.1553096
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::csc_rows_ker<long, int, 256>(int, int, int const*, int const*, long ",
+   "ms_per_iter": 0.15237520000000002
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "loop_concatenate_fusion_26",
+   "ms_per_iter": 0.1468357
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::nnz_per_col_ker<long, int, 128, 0>(int, long const*, int const*, int",
+   "ms_per_iter": 0.1329062
+  },
+  {
+   "region": "search_bt",
+   "kernel": "input_reduce_select_fusion_2",
+   "ms_per_iter": 0.131678
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion_5",
+   "ms_per_iter": 0.1281475
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_fusion_1",
+   "ms_per_iter": 0.1261034
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion_6",
+   "ms_per_iter": 0.1250312
+  },
+  {
+   "region": "pp_resto_init",
+   "kernel": "loop_concatenate_fusion_23",
+   "ms_per_iter": 0.1146341
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::copy_matrix_ker<long, double, int, int, int, double, 128>(int, int, ",
+   "ms_per_iter": 0.1140616
+  }
+ ],
+ "iter_count_range": [
+  0,
+  169
+ ],
+ "spineax": {
+  "after_jit": {
+   "registry_size": 4,
+   "cache_capacity": 64,
+   "rebuild_count": 0
+  },
+  "after_timing": {
+   "registry_size": 5,
+   "cache_capacity": 64,
+   "rebuild_count": 1
+  },
+  "after_profile": {
+   "registry_size": 6,
+   "cache_capacity": 64,
+   "rebuild_count": 2
+  }
+ },
+ "metadata": {
+  "jaxipm_commit": "b08b4a6cba1d20c18413b22e88c4ab74e4165036",
+  "jaxipm_dirty": true,
+  "spineax_commit": "4b2868227c603a4b445d3af3e934faf9f2904492",
+  "hostname": "iconlab",
+  "gpu": "6",
+  "jax": "0.10.2",
+  "params": {
+   "DEBUG_MODE": false,
+   "VALIDATION_MODE": false,
+   "auto_scaling": true,
+   "hot_restarting": true,
+   "ir_nsteps": 0,
+   "gpu_id": 1,
+   "Ktol": 0.0001,
+   "accept_after_max_steps": false,
+   "accept_every_trial_step": false,
+   "acceptable_compl_inf_tol": 0.01,
+   "acceptable_constr_viol_tol": 0.01,
+   "acceptable_dual_inf_tol": 10000000000.0,
+   "acceptable_iter": 15,
+   "acceptable_obj_change_tol": 1e+20,
+   "acceptable_tol": 1e-06,
+   "adaptive_mu_monotone_init_factor": 0.8,
+   "adaptive_mu_safeguard_factor": 0.0,
+   "alpha_for_y_tol": 10,
+   "alpha_min_frac": 0.05,
+   "alpha_red_factor": 0.5,
+   "barrier_tol_factor": 10.0,
+   "bound_frac": 0.01,
+   "bound_mult_init_val": 1.0,
+   "bound_mult_reset_threshold": 1000.0,
+   "bound_push": 0.01,
+   "bounds_scale": 1e-08,
+   "compl_inf_tol": 0.0001,
+   "constr_mult_init_max": 1000.0,
+   "constr_mult_reset_threshold": 0.0,
+   "constr_viol_tol": 0.0001,
+   "constraint_violation_norm_type": 1,
+   "corrector_compl_avrg_ref_fact": 1.0,
+   "degen_iters_max": 3,
+   "delta": 1.0,
+   "diverging_iterates_tol": 1e+20,
+   "dual_inf_tol": 1.0,
+   "eta_mu_exponent": 0.5,
+   "eta_phi": 1e-08,
+   "filter_margin_fact": 1e-05,
+   "filter_max_margin": 1.0,
+   "filter_reset_trigger": 5,
+   "filter_size": 100,
+   "first_hessian_perturbation": 0.0001,
+   "gamma_phi": 1e-08,
+   "gamma_theta": 1e-05,
+   "jacobian_regularization_exponent": 0.25,
+   "jacobian_regularization_value": 1e-08,
+   "kappa_d": 1e-05,
+   "kappa_sigma": 10000000000.0,
+   "kappa_soc": 0.99,
+   "max_filter_resets": 5,
+   "max_hessian_perturbation": 1e+20,
+   "max_iter": 500,
+   "max_soc": 4,
+   "max_soft_resto_iters": 10,
+   "min_hessian_perturbation": 1e-20,
+   "mu_init": 0.1,
+   "mu_linear_decrease_factor": 0.2,
+   "mu_max_fact": 1000.0,
+   "mu_max_upper": 100000.0,
+   "mu_min_default": 1e-11,
+   "mu_superlinear_decrease_power": 1.5,
+   "mu_target": 0.0,
+   "nlp_scaling_constr_target_gradient": 0.0,
+   "nlp_scaling_max_gradient": 100.0,
+   "nlp_scaling_min_value": 1e-08,
+   "nlp_scaling_obj_target_gradient": 0.0,
+   "obj_max_inc": 5.0,
+   "perturb_dec_fact": 0.3333333333333333,
+   "perturb_inc_fact": 8.0,
+   "perturb_inc_fact_first": 100.0,
+   "quality_function_max_section_steps": 8,
+   "quality_function_num_probe_points": 100,
+   "quality_function_section_qf_tol": 0.0,
+   "quality_function_section_sigma_tol": 0.01,
+   "resto.constr_mult_init_max": 0.0,
+   "resto.theta_max_fact": 100000000.0,
+   "resto_penalty_parameter": 1000.0,
+   "resto_proximity_weight": 1.0,
+   "s_max": 100.0,
+   "s_phi": 2.3,
+   "s_theta": 1.1,
+   "sigma_max": 100.0,
+   "sigma_min": 1e-06,
+   "slack_bound_frac": 0.01,
+   "slack_bound_push": 0.01,
+   "soc_method": 0,
+   "soft_resto_pderror_reduction_factor": 0.9999,
+   "tau_min": 0.99,
+   "theta_max_fact": 10000.0,
+   "theta_min_fact": 0.0001,
+   "tiny_step_y_tol": 0.01,
+   "tol": 1e-08,
+   "watchdog_shortened_iter_trigger": 10,
+   "watchdog_trial_iter_max": 3,
+   "eps": 2.220446049250313e-16,
+   "varphi_max": "[[1.79769313e+308]]",
+   "mu_min": 1e-11,
+   "is_square_problem": false,
+   "slack_move": 1.8189894035458565e-12,
+   "resto_failure_feasibility_threshold": 1e-06,
+   "tiny_step_tol": 2.220446049250313e-15
+  },
+  "argv": [
+   "/home/john/code/jaxipm_release/tests/rebuttal/k_fusion_profile.py",
+   "--scenario",
+   "multi",
+   "--variants",
+   "2",
+   "--batch",
+   "75",
+   "--gpu",
+   "6"
+  ],
+  "xplane": "/home/john/code/jaxipm_release/tests/rebuttal/logs/ktrace_multi_q2_b75/plugins/profile/2026_08_28_14_02_00/iconlab.xplane.pb"
+ }
+}

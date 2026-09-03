@@ -8,6 +8,7 @@ import numpy as np
 from spineax import cudss
 
 from jaxipm.search import execute_search, post_process
+from spineax.cudss.solver import _matvec as _spineax_matvec
 
 class TerminationCode:
     CONTINUE = 0
@@ -115,12 +116,91 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
     solution_buffer = jnp.zeros((max_solves, cp.nx))
     write_idx = jnp.array(0)
 
+    # Sequential-pool hot restart (opt-in, default off): freed slots receive
+    # pool indices batch_size, batch_size+1, ... in order from a global
+    # pointer, so every index in [0, pool_size) is injected exactly once
+    # (the caller seeds the first batch with indices 0..batch_size-1). A slot
+    # whose next index would be >= pool_size is not re-seeded and latches
+    # `done`, so the loop ends when the pool is drained. A slot that fails
+    # (codes 2/3/4) consumes its index and writes nothing, so failures show
+    # up as n_collected < pool_size instead of being silently replaced.
+    sequential_pool = bool(cp.p.get("sequential_pool", False))
+    pool_size = int(cp.p.get("pool_size", max_solves)) if sequential_pool else 0
+    if sequential_pool and cp.calc_next_problem_seq is None:
+        raise ValueError("sequential_pool=True requires CommonProblem.calc_next_problem_seq")
+    next_ptr0 = jnp.array(batch_size, dtype=jnp.int32)
+
+    def _next_problems(should_restart, next_ptr, subkeys, sols):
+        """Returns (next_x0, next_f, next_c, next_d, should_restart, next_ptr)."""
+        if not sequential_pool:
+            nxt = jax.vmap(cp.calc_next_problem)(subkeys, sols)
+            return (*nxt, should_restart, next_ptr)
+        idx = next_ptr + jnp.cumsum(should_restart) - 1
+        can_restart = should_restart & (idx < pool_size)
+        idx_c = jnp.clip(idx, 0, max(pool_size - 1, 0)).astype(jnp.int32)
+        nxt = jax.vmap(cp.calc_next_problem_seq)(idx_c, sols)
+        next_ptr = next_ptr + should_restart.sum().astype(jnp.int32)
+        return (*nxt, can_restart, next_ptr)
+
     vmapped_search = eqx.filter_vmap(execute_search, in_axes=(0, None))
     vmapped_post = eqx.filter_vmap(post_process, in_axes=(0, 0, None))
 
     if cp.p["DEBUG_MODE"]:
         term_buffer = jnp.zeros(max_solves, dtype=jnp.int32)
         iter_buffer = jnp.zeros(max_solves, dtype=jnp.int32)
+        # Census of EVERY terminal code raised by any slot at any iteration
+        # (codes 0..5, see TerminationCode). Unlike term_buffer, which only
+        # records the scattered successes (1/5), this also counts failures
+        # (2/3/4) that hot-restart otherwise silently replaces. Index 0 is
+        # the number of non-terminal slot-iterations.
+        term_hist0 = jnp.zeros(6, dtype=jnp.int32)
+        # Rebuttal instrumentation (runs F / I1 / H), DEBUG_MODE only:
+        #   branch_log[i, b]  branch taken by slot b at fused iteration i
+        #                     (see IterateFlags.branch_id; 7 = hot-restart init
+        #                     iteration, -1 = slot already done in WS mode)
+        #   kkt_res_log[i, b] relative residual ||K d - r|| / ||r|| of the Newton
+        #                     step computed at fused iteration i for slot b
+        #                     against the SAME factorized K (token.values); NaN
+        #                     while the slot is in restoration (reduced system)
+        #   kkt_err[k, :]     (overall_error, dual_inf, constr_viol, compl) --
+        #                     the scaled KKT error components of the collected
+        #                     solution k at its termination test
+        branch_log0 = jnp.full((safety_budget, batch_size), -1, dtype=jnp.int8)
+        kkt_res_log0 = jnp.full((safety_budget, batch_size), jnp.nan, dtype=jnp.float32)
+        #   kkt_bwd_log[i, b]  backward-error form ||K d - r|| / (||K||_F ||d|| + ||r||)
+        kkt_bwd_log0 = jnp.full((safety_budget, batch_size), jnp.nan, dtype=jnp.float32)
+        #   ic_log[i, b]      inertia-correction outcome of the step computed at
+        #                     fused iteration i: 1 = Hessian perturbation dxs > 0
+        #                     was applied (ic.test_status == 3), 0 = none, -1 = n/a
+        ic_log0 = jnp.full((safety_budget, batch_size), -1, dtype=jnp.int8)
+        kkt_err0 = jnp.full((max_solves, 4), jnp.nan)
+
+        def _kkt_residual(state):
+            # reduced Newton system: K [dx; ds; dy_c; dy_d] = rhs
+            st, rh = state.cqpo.step, state.cqpo.rhs
+            d = jnp.concatenate([st.x[:, :cp.nx, 0], st.s[:, :, 0],
+                                 st.y_c[:, :, 0], st.y_d[:, :, 0]], axis=1)
+            r = jnp.concatenate([rh.x[:, :cp.nx, 0], rh.s[:, :, 0],
+                                 rh.y_c[:, :, 0], rh.y_d[:, :, 0]], axis=1)
+            Kd = _spineax_matvec(state.ic.token, d)
+            num = jnp.linalg.norm(Kd - r, axis=1)
+            rn = jnp.linalg.norm(r, axis=1)
+            kf = jnp.sqrt(2.0) * jnp.linalg.norm(state.ic.token.values, axis=-1)  # ~||K||_F (one triangle stored)
+            res = num / jnp.maximum(rn, 1e-300)
+            bwd = num / jnp.maximum(kf * jnp.linalg.norm(d, axis=1) + rn, 1e-300)
+            in_resto = state.fl.in_restoration.reshape(-1) > 0
+            return (jnp.where(in_resto, jnp.nan, res).astype(jnp.float32),
+                    jnp.where(in_resto, jnp.nan, bwd).astype(jnp.float32))
+
+        def _kkt_errors(state):
+            def one(it, mu, cqpr, args):
+                _, (oe, di, cv, ci) = cp.nstqf.calc_check_converged(
+                    it, mu, cqpr.grad_lag_x, cqpr.grad_lag_s, cqpr.slacks,
+                    cqpr.c, cqpr.d, args)
+                return jnp.stack([jnp.reshape(oe, ()), jnp.reshape(di, ()),
+                                  jnp.reshape(cv, ()), jnp.reshape(ci, ())])
+            return eqx.filter_vmap(one, in_axes=(0, 0, 0, 0))(
+                state.it, state.mu, state.cqpr, state.args)
         # `done_mask` latches "this slot has reached any terminal code since its
         # last (re-init or start)". Used both to (a) suppress re-scattering of
         # post-convergence drifted state and (b) exit the loop early in WS mode
@@ -129,23 +209,39 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
         done_mask0 = jnp.zeros(batch_size, dtype=jnp.bool_)
 
         def cond(carry):
-            state, buf, tbuf, ibuf, done, widx, i, rng_key = carry
+            state, buf, tbuf, ibuf, thist, blog, rlog, wlog, iclog, ebuf, done, widx, i, rng_key, nptr = carry
             # Exit when buffer full, safety budget exhausted, or every slot
             # has reached a terminal state and no more progress is possible.
             return (widx < max_solves) & (i < safety_budget) & (~done.all())
 
         def body(carry):
-            state, buf, tbuf, ibuf, done, widx, i, rng_key = carry
+            state, buf, tbuf, ibuf, thist, blog, rlog, wlog, iclog, ebuf, done, widx, i, rng_key, nptr = carry
             orig = state
+            init_iter = orig.fl.needs_regular_init.reshape(-1) > 0
             result = vmapped_search(state, cp)
             state, terminate = vmapped_post(orig, result, cp)
+            # -- instrumentation (F / I1) --
+            bcode = jnp.where(init_iter, 7, state.fl.branch_id.reshape(-1)).astype(jnp.int8)
+            bcode = jnp.where(done, jnp.int8(-1), bcode)
+            blog = blog.at[i].set(bcode)
+            _res, _bwd = _kkt_residual(state)
+            rlog = rlog.at[i].set(jnp.where(done, jnp.nan, _res))
+            wlog = wlog.at[i].set(jnp.where(done, jnp.nan, _bwd))
+            _icp = (state.ic.dxs.reshape(-1) > 0).astype(jnp.int8)
+            iclog = iclog.at[i].set(jnp.where(done, jnp.int8(-1), _icp))
+            kkt_now = _kkt_errors(state)                       # (batch, 4)
 
             # Scatter only the FIRST time a slot reaches a successful terminal
             # code (1 or 5) since its last (re-init / start). The `done` latch
             # blocks re-scattering of slots whose post-convergence state may
             # drift on subsequent IPM steps.
-            term_codes = terminate.squeeze()
-            iter_counts = state.iter_count.squeeze()
+            term_codes = terminate.reshape(-1)          # (batch,) -- not squeeze(): batch may be 1
+            iter_counts = state.iter_count.reshape(-1)
+            # Count codes only for slots not already latched done (a finished
+            # WS-mode slot keeps re-raising its code every iteration).
+            thist = thist + jnp.sum(
+                (term_codes[:, None] == jnp.arange(6)[None, :]) & ~done[:, None],
+                axis=0).astype(jnp.int32)
             solved_mask = ((term_codes == 1) | (term_codes == 5)) & ~done
             solutions = state.it.x[:, :cp.nx, 0]  # (batch_size, nx)
 
@@ -153,17 +249,17 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
             offsets = jnp.cumsum(solved_mask) - 1  # 0-based offset among solved elements
             write_positions = widx + offsets  # global buffer positions
 
-            # Vectorized scatter: unsolved elements target a dummy position and get masked out
-            safe_positions = jnp.where(solved_mask, write_positions, max_solves - 1)
-            buf = buf.at[safe_positions].set(
-                jnp.where(solved_mask[:, None], solutions, buf[safe_positions])
-            )
-            tbuf = tbuf.at[safe_positions].set(
-                jnp.where(solved_mask, term_codes, tbuf[safe_positions])
-            )
-            ibuf = ibuf.at[safe_positions].set(
-                jnp.where(solved_mask, iter_counts, ibuf[safe_positions])
-            )
+            # Vectorized scatter: unsolved elements target an OUT-OF-BOUNDS
+            # dummy index and are dropped. (The former in-bounds dummy
+            # `max_solves - 1` collided with the real write of the final
+            # solution -- duplicate scatter indices with different values have
+            # undefined order -- so the last collected row of every call could
+            # come back as zeros / a stale slot. Fixed 2026-08-25.)
+            safe_positions = jnp.where(solved_mask, write_positions, max_solves)
+            buf = buf.at[safe_positions].set(solutions, mode="drop")
+            tbuf = tbuf.at[safe_positions].set(term_codes.astype(tbuf.dtype), mode="drop")
+            ibuf = ibuf.at[safe_positions].set(iter_counts.astype(ibuf.dtype), mode="drop")
+            ebuf = ebuf.at[safe_positions].set(kkt_now, mode="drop")   # (H)
             widx = widx + solved_mask.sum()
 
             # --- Restart terminated elements with new problems (HR mode only) ---
@@ -171,15 +267,17 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
             # after termination — search.py's init_regular machinery is what makes
             # re-seeding sound, and that's only triggered when hot_restarting is on.
             if cp.p["hot_restarting"]:
-                should_restart = (terminate > 0).squeeze()  # (batch_size,)
+                # ~done: a slot latched done (sequential pool drained) must not
+                # keep re-triggering; in paper HR mode `done` is never set.
+                should_restart = (terminate > 0).reshape(-1) & ~done  # (batch_size,)
 
                 # Split rng: 1 new root + batch_size subkeys
                 rng_key, *subkeys = jax.random.split(rng_key, batch_size + 1)
                 subkeys = jnp.stack(subkeys)  # (batch_size, 2)
 
                 # Get next problems for ALL elements (select only where needed)
-                next_x0, next_f, next_c, next_d = jax.vmap(cp.calc_next_problem)(
-                    subkeys, state.it.x[:, :cp.nx, 0]
+                next_x0, next_f, next_c, next_d, should_restart, nptr = _next_problems(
+                    should_restart, nptr, subkeys, state.it.x[:, :cp.nx, 0]
                 )
 
                 # Splice new user args into existing prefix structure
@@ -209,29 +307,36 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
                 # WS mode: latch stays True once set (any terminal code).
                 next_done = done | (term_codes > 0)
 
-            return state, buf, tbuf, ibuf, next_done, widx, i + 1, rng_key
+            return (state, buf, tbuf, ibuf, thist, blog, rlog, wlog, iclog, ebuf, next_done,
+                    widx, i + 1, rng_key, nptr)
 
-        final_state, solution_buffer, term_buffer, iter_buffer, _, write_idx, _, _ = jax.lax.while_loop(
+        (final_state, solution_buffer, term_buffer, iter_buffer, term_hist,
+         branch_log, kkt_res_log, kkt_bwd_log, ic_log, kkt_err, _, write_idx, n_fused_iters, _, _) = jax.lax.while_loop(
             cond, body,
-            (batch_state, solution_buffer, term_buffer, iter_buffer,
-             done_mask0, write_idx, 0, key)
+            (batch_state, solution_buffer, term_buffer, iter_buffer, term_hist0,
+             branch_log0, kkt_res_log0, kkt_bwd_log0, ic_log0, kkt_err0, done_mask0, write_idx, 0, key,
+             next_ptr0)
         )
-        return final_state, solution_buffer, write_idx, term_buffer, iter_buffer
+        # DEBUG return: 5 legacy fields + (term_hist, n_fused_iters, branch_log,
+        # kkt_res_log, kkt_err). Callers that only know the legacy layout
+        # should index the first five.
+        return (final_state, solution_buffer, write_idx, term_buffer, iter_buffer,
+                term_hist, n_fused_iters, branch_log, kkt_res_log, kkt_err, kkt_bwd_log, ic_log)
 
     else:
         done_mask0 = jnp.zeros(batch_size, dtype=jnp.bool_)
 
         def cond(carry):
-            state, buf, done, widx, i, rng_key = carry
+            state, buf, done, widx, i, rng_key, nptr = carry
             return (widx < max_solves) & (i < safety_budget) & (~done.all())
 
         def body(carry):
-            state, buf, done, widx, i, rng_key = carry
+            state, buf, done, widx, i, rng_key, nptr = carry
             orig = state
             result = vmapped_search(state, cp)
             state, terminate = vmapped_post(orig, result, cp)
 
-            term_codes = terminate.squeeze()
+            term_codes = terminate.reshape(-1)          # (batch,) -- not squeeze(): batch may be 1
             solved_mask = ((term_codes == 1) | (term_codes == 5)) & ~done
             solutions = state.it.x[:, :cp.nx, 0]  # (batch_size, nx)
 
@@ -239,24 +344,26 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
             offsets = jnp.cumsum(solved_mask) - 1  # 0-based offset among solved elements
             write_positions = widx + offsets  # global buffer positions
 
-            # Vectorized scatter: unsolved elements target a dummy position and get masked out
-            safe_positions = jnp.where(solved_mask, write_positions, max_solves - 1)
-            buf = buf.at[safe_positions].set(
-                jnp.where(solved_mask[:, None], solutions, buf[safe_positions])
-            )
+            # Vectorized scatter: unsolved elements target an OUT-OF-BOUNDS
+            # dummy index and are dropped (see the DEBUG path for the bug the
+            # former in-bounds dummy index caused).
+            safe_positions = jnp.where(solved_mask, write_positions, max_solves)
+            buf = buf.at[safe_positions].set(solutions, mode="drop")
             widx = widx + solved_mask.sum()
 
             # --- Restart terminated elements with new problems (HR mode only) ---
             if cp.p["hot_restarting"]:
-                should_restart = (terminate > 0).squeeze()  # (batch_size,)
+                # ~done: a slot latched done (sequential pool drained) must not
+                # keep re-triggering; in paper HR mode `done` is never set.
+                should_restart = (terminate > 0).reshape(-1) & ~done  # (batch_size,)
 
                 # Split rng: 1 new root + batch_size subkeys
                 rng_key, *subkeys = jax.random.split(rng_key, batch_size + 1)
                 subkeys = jnp.stack(subkeys)  # (batch_size, 2)
 
                 # Get next problems for ALL elements (select only where needed)
-                next_x0, next_f, next_c, next_d = jax.vmap(cp.calc_next_problem)(
-                    subkeys, state.it.x[:, :cp.nx, 0]
+                next_x0, next_f, next_c, next_d, should_restart, nptr = _next_problems(
+                    should_restart, nptr, subkeys, state.it.x[:, :cp.nx, 0]
                 )
 
                 # Splice new user args into existing prefix structure
@@ -284,11 +391,11 @@ def solve_throughput(key, cp, batch_state, max_solves, max_iter_per_solve=None):
             else:
                 next_done = done | (term_codes > 0)
 
-            return state, buf, next_done, widx, i + 1, rng_key
+            return state, buf, next_done, widx, i + 1, rng_key, nptr
 
-        final_state, solution_buffer, _, write_idx, _, _ = jax.lax.while_loop(
+        final_state, solution_buffer, _, write_idx, _, _, _ = jax.lax.while_loop(
             cond, body,
-            (batch_state, solution_buffer, done_mask0, write_idx, 0, key)
+            (batch_state, solution_buffer, done_mask0, write_idx, 0, key, next_ptr0)
         )
         return final_state, solution_buffer, write_idx
 

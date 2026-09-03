@@ -201,8 +201,8 @@ def main():
                       "also fail)")
                 break
 
-            if len(tp_out) == 5:
-                _, solution_buffer, write_idx, _, iter_buffer = tp_out
+            if len(tp_out) >= 5:
+                _, solution_buffer, write_idx, _, iter_buffer = tp_out[:5]
             else:
                 _, solution_buffer, write_idx = tp_out
                 iter_buffer = None

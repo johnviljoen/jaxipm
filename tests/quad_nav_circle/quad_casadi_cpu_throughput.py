@@ -24,8 +24,8 @@ Interrupted sweeps can be continued with --resume (skips completed configs).
 # Import order matters: the common module pins OMP/BLAS thread env vars
 # before anything pulls in casadi (both here and in spawn'd children).
 from tests.casadi_cpu_throughput_common import (
-    MIN_SOLVES_PER_WORKER, load_completed, parse_sweep_args, print_summaries,
-    run_config,
+    MIN_SOLVES_PER_WORKER, ipopt_extras, load_completed, out_suffix,
+    parse_sweep_args, print_summaries, run_config,
 )
 
 import json
@@ -82,7 +82,12 @@ def make_worker(sector_deg, n_pool):
                 obj = float(sol.value(mpc.opti.f))
             except Exception:
                 obj = float("nan")
-            return X, iters, obj, True
+            ex = ipopt_extras(mpc.opti, sol)
+            try:
+                ex["U"] = np.asarray(sol.value(mpc.U)).T
+            except Exception:
+                pass
+            return X, iters, obj, True, ex
         except RuntimeError:
             try:
                 X = np.asarray(mpc.opti.debug.value(mpc.X)).T
@@ -94,7 +99,12 @@ def make_worker(sector_deg, n_pool):
                 obj = float(mpc.opti.debug.value(mpc.opti.f))
             except Exception:
                 obj = float("nan")
-            return X, iters, obj, False
+            ex = ipopt_extras(mpc.opti, None)
+            try:
+                ex["U"] = np.asarray(mpc.opti.debug.value(mpc.U)).T
+            except Exception:
+                pass
+            return X, iters, obj, False, ex
 
     return solve
 
@@ -128,7 +138,7 @@ def main():
                 out_path = os.path.join(
                     logs_dir,
                     f"casadi_cpu_throughput_sector{sector_deg}_{mode}"
-                    f"_c{n_cores:03d}_results.npz")
+                    f"_c{n_cores:03d}{out_suffix()}_results.npz")
                 if args.resume:
                     done = load_completed(out_path, n_cores, n_total)
                     if done is not None:

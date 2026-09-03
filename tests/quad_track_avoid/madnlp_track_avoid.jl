@@ -12,6 +12,27 @@ get!(ENV, "JULIA_PYTHONCALL_EXE", "/opt/Miniconda/bin/python3")
 using PythonCall
 
 CUDA.allowscalar(false)
+
+# ── Rebuttal hooks (run E). Defaults reproduce the paper driver exactly. ──────
+#   MADNLP_TOL=1e-8        solver tolerance override
+#   MADNLP_N_RUNS=2000     pool size override (use N_RUNS_jaxipm for the shared pool)
+#   MADNLP_REPEATS=5       timed repeats of the whole pool after the warmup solve
+#   MADNLP_OUT_SUFFIX=_x   appended to the results filename (never clobber paper npz)
+const MADNLP_TOL     = parse(Float64, get(ENV, "MADNLP_TOL", "1e-6"))
+const MADNLP_REPEATS = parse(Int, get(ENV, "MADNLP_REPEATS", "1"))
+const MADNLP_SUFFIX  = get(ENV, "MADNLP_OUT_SUFFIX", "")
+function _madnlp_meta_write(out_path::String, extra::Dict)
+    git(args...) = try strip(read(Cmd(["git", "-C", @__DIR__, args...]), String)) catch; "unknown" end
+    d = Dict{String,Any}("tol" => MADNLP_TOL, "repeats" => MADNLP_REPEATS,
+        "jaxipm_release_commit" => git("rev-parse", "HEAD"),
+        "dirty" => git("status", "--porcelain") != "",
+        "hostname" => gethostname(), "gpu" => string(CUDA.device()),
+        "cuda_visible_devices" => get(ENV, "CUDA_VISIBLE_DEVICES", ""),
+        "julia" => string(VERSION), "argv" => ARGS, "script" => @__FILE__)
+    merge!(d, extra)
+    d["madnlp_status_legend"] = Dict(string(Int(st)) => string(st) for st in instances(MadNLP.Status))
+    open(out_path * ".meta.json", "w") do io; JSON.print(io, d, 2); end
+end
 println("Using GPU: ", CUDA.device())
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,7 +189,7 @@ function solve_once(nlp; print_level=MadNLP.INFO)
         equality_treatment       = MadNLP.RelaxEquality,
         fixed_variable_treatment = MadNLP.RelaxBound,
         dual_initialized         = true,
-        tol                      = 1e-6,
+        tol                      = MADNLP_TOL,
         mu_init                  = 1.0,
         first_hessian_perturbation = 1e-2,
         print_level              = print_level,
@@ -196,6 +217,7 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
     println("Warmup solve (incl. JIT): $(t_jit * 1000) ms")
 
     X_all    = fill(NaN, N_RUNS, N, nx)
+    z_all    = zeros(0, 0)   # rebuttal run H: raw solution vectors (X blocks then U blocks)
     times    = zeros(Float64, N_RUNS)
     iters    = zeros(Int32, N_RUNS)
     obj_vals = fill(NaN, N_RUNS)
@@ -204,7 +226,16 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
 
     println("\nRunning $N_RUNS sequential cold solves with random (x0, xr)")
     t0 = time()
-    prog = Progress(N_RUNS; desc="MadNLP", showspeed=true)
+    desc_str = "MadNLP"
+    rep_start = zeros(Float64, MADNLP_REPEATS); rep_stop = zeros(Float64, MADNLP_REPEATS)
+    rep_wall = zeros(Float64, MADNLP_REPEATS); rep_throughput = zeros(Float64, MADNLP_REPEATS)
+    rep_solve_wall = zeros(Float64, MADNLP_REPEATS)   # sum of timed solve calls only (model build excluded)
+    status_codes = fill(Int32(-1), N_RUNS)
+    total_time = 0.0
+    for rep in 1:MADNLP_REPEATS
+    println("[VARIANCE] rep $rep/$MADNLP_REPEATS START epoch=$(time())")
+    t0 = time()   # per-repeat wall clock (fix: was set once before the repeat loop)
+    prog = Progress(N_RUNS; desc=desc_str, showspeed=true)
     for i in 1:N_RUNS
         x0_i = all_x0[i, :]
         xr_i = all_xr[i, :, :]
@@ -219,6 +250,7 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
 
         times[i] = t2 - t1
         iters[i] = result.iter
+        status_codes[i] = Int32(Int(result.status))
         success[i] = (result.status == MadNLP.SOLVE_SUCCEEDED)
         try
             obj_vals[i] = result.objective
@@ -231,6 +263,8 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
         end
 
         z_sol = Array(result.solution)
+        if size(z_all, 2) == 0; z_all = fill(NaN, N_RUNS, length(z_sol)); end
+        z_all[i, :] = z_sol
         if any(isnan, z_sol)
         else
             X_flat = z_sol[1:N*nx]
@@ -242,12 +276,25 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
     end
     finish!(prog)
     total_time = time() - t0
+    rep_start[rep] = t0; rep_stop[rep] = time(); rep_wall[rep] = total_time
+    rep_throughput[rep] = N_RUNS / total_time
+    rep_solve_wall[rep] = sum(times)
+    println("[VARIANCE] rep $rep/$MADNLP_REPEATS STOP  epoch=$(time())  wall=$(round(total_time, digits=2))s  throughput=$(round(N_RUNS / total_time, digits=3)) solves/s  success=$(sum(success))/$N_RUNS")
+    end  # repeats
+    if MADNLP_REPEATS > 1
+        println("[VARIANCE] throughput mean=$(round(mean(rep_throughput), digits=3)) std=$(round(std(rep_throughput), digits=3)) over $MADNLP_REPEATS repeats")
+    end
 
     logs_dir = joinpath(@__DIR__, "logs")
     mkpath(logs_dir)
-    out_path = joinpath(logs_dir, "madnlp_v$(round(average_vel, digits=1))_results.npz")
+    out_path = joinpath(logs_dir, "madnlp_v$(round(average_vel, digits=1))$(MADNLP_SUFFIX)_results.npz")
     npzwrite(out_path,
              Dict("X_all" => X_all,
+                  "z_all" => z_all,
+                  "status_codes" => status_codes,
+                  "rep_start_epoch" => rep_start, "rep_stop_epoch" => rep_stop,
+                  "rep_wall" => rep_wall, "rep_throughput" => rep_throughput,
+                  "rep_solve_wall" => rep_solve_wall,
                   "times" => times,
                   "iters" => iters,
                   "obj_vals" => obj_vals,
@@ -262,6 +309,7 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
                   "N_RUNS" => [N_RUNS],
                   "avg_vel" => [average_vel]))
 
+    _madnlp_meta_write(out_path, Dict("N_RUNS" => N_RUNS, "solve_only_throughput" => N_RUNS ./ rep_solve_wall))
     n_succ = sum(success)
     mean_solve_ms = n_succ > 0 ? mean(times[success]) * 1000 : 0.0
     println("\nMadNLP: saved $out_path")
@@ -269,7 +317,7 @@ function run_avg_vel(average_vel, N_RUNS, delta_std)
 end
 
 function main()
-    N_RUNS = Int(_tp["N_RUNS_seq"])
+    N_RUNS = parse(Int, get(ENV, "MADNLP_N_RUNS", string(_tp["N_RUNS_seq"])))
     delta_std = parse(Float64, get(ENV, "DELTA_STD", "0.5"))
     for average_vel in AVG_VELS
         println("\n================ avg_vel = $average_vel ================")

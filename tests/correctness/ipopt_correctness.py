@@ -48,12 +48,26 @@ def main():
     # would corrupt Stage 2's per-iteration comparison — start clean. (The
     # iter_<k>/ dumps are directories, hence rmtree rather than per-file.)
     ipopt_logs = os.path.join(here, "ipopt_logs")
+    keep = None  # run-J instance runs must not destroy the shipped reference dumps
+    if os.environ.get("CORR_INSTANCE") is not None and os.path.isdir(ipopt_logs):
+        keep = ipopt_logs + ".keep"
+        shutil.rmtree(keep, ignore_errors=True)
+        shutil.move(ipopt_logs, keep)
     if os.path.isdir(ipopt_logs):
         shutil.rmtree(ipopt_logs)
     os.makedirs(ipopt_logs, exist_ok=True)
 
     # ── Build the NLP (jaxipm format) and convert to cyipopt ────────────────
     f, c, d, x_L, x_U, d_L, d_U, z_init, gt, aux = quadcopter_nav(N=N_HORIZON)
+    # run-J extension: CORR_INSTANCE=<k> selects nav pool member k (CORR_SECTOR deg)
+    inst = os.environ.get("CORR_INSTANCE")
+    if inst is not None:
+        import functools, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(here, "..", "..")))
+        from tests.rebuttal.problems import nav_pool_instance
+        x0_ic, z_init = nav_pool_instance(float(os.environ.get("CORR_SECTOR", "90")), int(inst))
+        c = functools.partial(c, x0_ic=jnp.asarray(x0_ic))
+        print(f"correctness_test/IPOPT: pool instance {inst}: x0_ic={x0_ic[:3]}")
     z_to_xu, xu_to_z, quad_params, _x0 = aux
     obj, obj_grad, obj_hess, constraints, bounds = custom_to_cyipopt_format(
         f, c, d, x_L, x_U, d_L, d_U, z_init
@@ -106,7 +120,14 @@ def main():
     x_sol = np.asarray(x_sol)  # (N, 13)
     u_sol = np.asarray(u_sol)  # (N-1, 4)
 
-    out_path = os.path.join(logs_dir, "ipopt_correctness.npz")
+    if inst is not None:
+        dst = os.path.join(here, f"ipopt_logs_inst{inst}")
+        if os.path.isdir(dst): shutil.rmtree(dst)
+        shutil.move(ipopt_logs, dst)
+        print(f"  ipopt_logs moved to {dst}")
+        if keep is not None:
+            shutil.move(keep, ipopt_logs)
+    out_path = os.path.join(logs_dir, f"ipopt_correctness{'_inst' + inst if inst is not None else ''}.npz")
     np.savez(
         out_path,
         z_sol=z_sol,

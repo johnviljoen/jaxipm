@@ -23,6 +23,7 @@ Cold guess: hover at each quad's start (feasible because starts are
 
 import time, json
 import casadi as ca
+import os
 import numpy as np
 from tests.quad_casadi_dynamics import f_ca
 
@@ -38,10 +39,11 @@ quad_params["B0"] = np.array([
 
 # Multi-swap geometry (module-level so JAX and cusadi variants can import).
 # R and N_quads are parametric; the helpers below build starts / goals.
-def start_state(i: int, N_quads: int, R: float) -> np.ndarray:
-    """Quad i's 13-state start: position on circle, identity quaternion,
-    zero velocity + angular rate."""
-    theta = 2.0 * np.pi * i / N_quads
+def start_state(i: int, N_quads: int, R: float, phi: float = 0.0) -> np.ndarray:
+    """Quad i's 13-state start: position on circle (base angle rotated by the
+    per-instance formation offset phi), identity quaternion, zero velocity +
+    angular rate."""
+    theta = 2.0 * np.pi * i / N_quads + phi
     return np.array([
         R * np.cos(theta), R * np.sin(theta), 0.0,
         1.0, 0.0, 0.0, 0.0,
@@ -50,10 +52,36 @@ def start_state(i: int, N_quads: int, R: float) -> np.ndarray:
     ])
 
 
-def goal_xyz(i: int, N_quads: int, R: float) -> np.ndarray:
+def goal_xyz(i: int, N_quads: int, R: float, phi: float = 0.0) -> np.ndarray:
     """Quad i's goal position (diametrically opposite start)."""
-    theta = 2.0 * np.pi * i / N_quads + np.pi
+    theta = 2.0 * np.pi * i / N_quads + np.pi + phi
     return np.array([R * np.cos(theta), R * np.sin(theta), 0.0])
+
+
+POOL_ALPHA = 0.6180339887498949    # golden-ratio stride (start rotation)
+POOL_BETA = 0.41421356237309515    # silver-ratio stride (goal offset)
+POOL_HALF_RANGE = np.deg2rad(5.0)   # +/-5 deg leeway on starts AND goals
+
+
+def swap_pool(N_quads: int, n_pool: int, R: float):
+    """Deterministic varied-IC pool (2026-08-31, v3): start formation rotated
+    by phi_k in [-5 deg, +5 deg) around the original static starts; goal
+    formation INDEPENDENTLY at psi_k = phi_k + delta_k, delta_k in
+    [-5 deg, +5 deg) around antipodal (near-antipodal crossings -> strong
+    quad interaction). Identical formulas to
+    jaxipm_multi_swap.multi_swap_pool and the MadNLP driver, so every solver
+    consumes the same pool.
+
+    Returns (phis (n_pool,), psis (n_pool,), starts (n_pool, N_quads, 13),
+             goals (n_pool, N_quads, 3))."""
+    k = np.arange(n_pool)
+    phis = POOL_HALF_RANGE * (2.0 * np.mod(k * POOL_ALPHA, 1.0) - 1.0)
+    psis = phis + POOL_HALF_RANGE * (2.0 * np.mod(k * POOL_BETA, 1.0) - 1.0)
+    starts = np.stack([[start_state(i, N_quads, R, phi) for i in range(N_quads)]
+                       for phi in phis])
+    goals = np.stack([[goal_xyz(i, N_quads, R, psi) for i in range(N_quads)]
+                      for psi in psis])
+    return phis, psis, starts, goals
 
 
 # Test-specific parameters from test_params.json (horizon, timestep, geometry,
@@ -108,11 +136,14 @@ class QuadcopterMultiSwapMPC:
         self.Us = [self.opti.variable(self.nu_dim, N - 1) for _ in range(N_quads)]
 
         self.inits = [self.opti.parameter(self.nx_dim, 1) for _ in range(N_quads)]
+        # Per-quad goal positions as parameters (varied-IC pool, 2026-08-31):
+        # setting them per instance changes the cost without rebuilding.
+        self.goal_pars = [self.opti.parameter(3, 1) for _ in range(N_quads)]
 
         # Cost: sum_i sum_k Q * (x_i[k] - goal_i)^2
         cost = ca.MX(0)
         for i in range(N_quads):
-            gvec = ca.DM(self.goal_vec[i])
+            gvec = ca.vertcat(self.goal_pars[i], ca.DM.zeros(10, 1))
             for k in range(N):
                 dx = self.Xs[i][:, k] - gvec
                 for s in range(self.nx_dim):
@@ -167,7 +198,7 @@ class QuadcopterMultiSwapMPC:
         opts = {
             'ipopt.print_level': 0,
             'print_time': 0,
-            'ipopt.tol': 1e-6,
+            'ipopt.tol': float(__import__('os').environ.get('IPOPT_TOL', '1e-6')),  # rebuttal run D: IPOPT_TOL=1e-8
             'ipopt.warm_start_init_point': 'yes',
             'ipopt.max_iter': 500,
         }
@@ -175,6 +206,7 @@ class QuadcopterMultiSwapMPC:
 
         for i in range(N_quads):
             self.opti.set_value(self.inits[i], self.starts[i])
+            self.opti.set_value(self.goal_pars[i], self.goals[i])
 
         self._set_hover_guess()
 
@@ -194,10 +226,22 @@ class QuadcopterMultiSwapMPC:
             self.opti.set_initial(self.Xs[i], x_init_i)
             self.opti.set_initial(self.Us[i], u_init_i)
 
-    def solve_cold(self):
-        """Re-solve from the constant-hover cold guess (no warm-starting)."""
+    def set_instance(self, starts, goals):
+        """Switch to another pool instance: per-quad starts (N_quads, 13) and
+        goal positions (N_quads, 3). Parameters only -- no graph rebuild."""
+        self.starts = [np.asarray(starts[i]) for i in range(self.N_quads)]
+        self.goals = [np.asarray(goals[i]) for i in range(self.N_quads)]
+        self.goal_vec = [np.hstack([self.goals[i], np.zeros(10)])
+                         for i in range(self.N_quads)]
+
+    def solve_cold(self, starts=None, goals=None):
+        """Re-solve from the constant-hover cold guess (no warm-starting).
+        Pass (starts, goals) to solve another pool instance."""
+        if starts is not None:
+            self.set_instance(starts, goals)
         for i in range(self.N_quads):
             self.opti.set_value(self.inits[i], self.starts[i])
+            self.opti.set_value(self.goal_pars[i], self.goals[i])
         self._set_hover_guess()
         sol = self.opti.solve()
         self.x_sols = [sol.value(X) for X in self.Xs]
@@ -262,13 +306,17 @@ if __name__ == "__main__":
     N_horizon = N_HORIZON # int(os.environ.get("N", str(N_HORIZON)))
     Ts = TS
     R = R_DEFAULT # float(os.environ.get("R", str(R_DEFAULT)))
-    N_RUNS = tmp["N_RUNS_seq"]
+    N_RUNS = int(__import__("os").environ.get("IPOPT_N_RUNS", tmp["N_RUNS_seq"]))  # rebuttal: pool override
 
     for N_quads in tmp["N_quads"]:
         print(f"CasADi multi-swap: N_quads={N_quads}, N={N_horizon}, R={R}, N_RUNS={N_RUNS}")
         mpc = QuadcopterMultiSwapMPC(N_quads=N_quads, N=N_horizon, Ts=Ts, R=R)
+        n_pool = tmp["N_RUNS_jaxipm"]
+        pool_phis, pool_psis, pool_starts, pool_goals = swap_pool(N_quads, n_pool, R)
+        inst_idx = np.arange(N_RUNS) % n_pool
 
         X_all = np.full((N_RUNS, N_quads, N_horizon, 13), np.nan, dtype=np.float64)
+        U_all = np.full((N_RUNS, N_quads, N_horizon - 1, 4), np.nan, dtype=np.float64)  # rebuttal run H
         times = np.zeros(N_RUNS, dtype=np.float64)
         iters = np.zeros(N_RUNS, dtype=np.int32)
         obj_vals = np.full(N_RUNS, np.nan, dtype=np.float64)
@@ -280,11 +328,13 @@ if __name__ == "__main__":
             t1 = time_mod.time()
             converged = False
             try:
-                sol = mpc.solve_cold()
+                sol = mpc.solve_cold(starts=pool_starts[inst_idx[i]],
+                                     goals=pool_goals[inst_idx[i]])
                 t2 = time_mod.time()
                 times[i] = t2 - t1
                 for q in range(N_quads):
                     X_all[i, q] = mpc.x_sols[q].T
+                    U_all[i, q] = np.asarray(mpc.u_sols[q]).T
                 try:
                     iters[i] = sol.stats().get("iter_count", -1)
                 except Exception:
@@ -323,9 +373,11 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"casadi_{N_quads}_results.npz")
+        out_path = os.path.join(logs_dir, f"casadi_{N_quads}{os.environ.get('IPOPT_OUT_SUFFIX', '')}_results.npz")
         np.savez(
             out_path,
+            U_all=U_all, ipopt_tol=np.array([float(os.environ.get("IPOPT_TOL", "1e-6"))]),
+            loadavg_at_save=np.array(os.getloadavg()),
             X_all=X_all,
             times=times,
             iters=iters,
@@ -339,6 +391,11 @@ if __name__ == "__main__":
             R=np.array([R]),
             starts=starts_arr,
             goals=goals_arr,
+            pool_phis=pool_phis,
+            pool_psis=pool_psis,
+            pool_starts=pool_starts,
+            pool_goals=pool_goals,
+            inst_idx=inst_idx,
         )
         print(f"CasADi multi-swap: saved {out_path}")
         if success.any():

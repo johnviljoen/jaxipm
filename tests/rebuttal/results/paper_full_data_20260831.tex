@@ -1,0 +1,67 @@
+\begin{table}[p]
+\centering\setlength{\tabcolsep}{1.7pt}\renewcommand{\arraystretch}{0.94}
+{\scriptsize
+\begin{tabular}{@{}l l r r r r r r r@{}}
+\toprule
+& & \multicolumn{2}{c}{Navigation, sector} & \multicolumn{3}{c}{Reference tracking, $\bar{v}$ (m/s)} & \multicolumn{2}{c}{Consensus, quadrotors} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-7}\cmidrule(lr){8-9}
+Metric & Solver & $90^\circ$ & $180^\circ$ & 1.0 & 1.5 & 2.0 & 2 & 4 \\
+\midrule
+\multirow{5}{*}{solves/s} & IPOPT-def. & 6.61$\pm$0.39 & 6.99$\pm$0.28 & 6.06$\pm$0.30 & 4.61$\pm$0.27 & 2.55$\pm$0.14 & 0.578$\pm$0.018 & 0.289$\pm$0.008 \\
+ & IPOPT-64 & 280.7$\pm$13.9 & 310.9$\pm$14.8 & 234.7$\pm$9.5 & 185.4$\pm$3.8 & 105.4$\pm$3.7 & 26.38$\pm$0.98 & 13.99$\pm$0.13 \\
+ & MadNLP & 2.25$\pm$0.28 & 2.74$\pm$0.02 & 2.97$\pm$0.99 & 2.02$\pm$0.01 & 1.65$\pm$0.00 & 1.07$\pm$0.14 & 0.596$\pm$0.008 \\
+ & \textbf{jaxipm-SL} & \textbf{14.86$\pm$0.96} & \textbf{14.08$\pm$1.12} & \textbf{13.00$\pm$0.71} & \textbf{11.85$\pm$0.07} & \textbf{11.32$\pm$0.22} & \textbf{17.31$\pm$0.46} & \textbf{2.62$\pm$0.03} \\
+ & \textbf{jaxipm-IL} & \textbf{89.03$\pm$1.87} & \textbf{95.45$\pm$1.24} & \textbf{92.49$\pm$0.37} & \textbf{81.76$\pm$0.37} & \textbf{73.71$\pm$0.87} & \textbf{18.42$\pm$0.20} & \textbf{4.54$\pm$0.05} \\
+\midrule
+\multirow{5}{*}{cores} & IPOPT-def. & 1.51 & 1.44 & 1.65 & 1.59 & 1.55 & 1.4 & 1.32 \\
+ & IPOPT-64 & 64 & 64 & 64 & 64 & 64 & 64 & 64 \\
+ & MadNLP & 0.513 & 0.565 & 0.81 & 0.696 & 1 & 2.59 & 2.73 \\
+ & \textbf{jaxipm-SL} & \textbf{3.39} & \textbf{2.9} & \textbf{3.55} & \textbf{4.09} & \textbf{6.87} & \textbf{42} & \textbf{12} \\
+ & \textbf{jaxipm-IL} & \textbf{20.3} & \textbf{19.6} & \textbf{25.2} & \textbf{28.2} & \textbf{44.7} & \textbf{44.7} & \textbf{20.8} \\
+\midrule
+\multirow{5}{*}{succ.\ [\%]} & IPOPT-def. & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+ & IPOPT-64 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+ & MadNLP & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
+ & \textbf{jaxipm-SL} & \textbf{99.9} & \textbf{99.55} & \textbf{99.2} & \textbf{96.2} & \textbf{86.1} & \textbf{100} & \textbf{95} \\
+ & \textbf{jaxipm-IL} & \textbf{100} & \textbf{100} & \textbf{100} & \textbf{100} & \textbf{100} & \textbf{100} & \textbf{100} \\
+\midrule
+\multirow{5}{*}{cost} & IPOPT-def. & 517.0$\pm$20.3 & 507.6$\pm$17.1 & 265.7$\pm$98.7 & 556.7$\pm$140.9 & 1146.7$\pm$126.9 & 755.5$\pm$0.8 & 1529.7$\pm$4.7 \\
+ & IPOPT-64 & 517.0$\pm$20.3 & 507.6$\pm$17.1 & 265.7$\pm$98.7 & 556.7$\pm$140.9 & 1146.7$\pm$126.9 & 755.5$\pm$0.8 & 1529.7$\pm$4.7 \\
+ & MadNLP & 517.0$\pm$20.3 & 507.6$\pm$17.2 & 261.7$\pm$92.0 & 555.8$\pm$138.3 & 1147.5$\pm$121.2 & 755.5$\pm$0.8 & 1529.7$\pm$4.7 \\
+ & \textbf{jaxipm-SL} & \textbf{517.1$\pm$20.3} & \textbf{507.6$\pm$17.2} & \textbf{249.8$\pm$79.4} & \textbf{543.2$\pm$126.5} & \textbf{1140.5$\pm$125.3} & \textbf{755.5$\pm$0.8} & \textbf{1533.9$\pm$8.3} \\
+ & \textbf{jaxipm-IL} & \textbf{518.0$\pm$20.8} & \textbf{507.6$\pm$16.5} & \textbf{244.0$\pm$76.3} & \textbf{539.2$\pm$121.4} & \textbf{1142.4$\pm$131.5} & \textbf{755.5$\pm$0.8} & \textbf{1533.7$\pm$8.9} \\
+\midrule
+\multirow{5}{*}{$\|c\|_\infty$ mean} & IPOPT-def. & $3.9\!\times\!10^{-10}$ & $2.0\!\times\!10^{-10}$ & $7.8\!\times\!10^{-10}$ & $9.0\!\times\!10^{-10}$ & $2.1\!\times\!10^{-10}$ & $1.5\!\times\!10^{-9}$ & $1.8\!\times\!10^{-9}$ \\
+ & IPOPT-64 & $3.9\!\times\!10^{-10}$ & $2.0\!\times\!10^{-10}$ & $7.8\!\times\!10^{-10}$ & $9.0\!\times\!10^{-10}$ & $2.1\!\times\!10^{-10}$ & $1.5\!\times\!10^{-9}$ & $2.0\!\times\!10^{-9}$ \\
+ & MadNLP & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ \\
+ & \textbf{jaxipm-SL} & {\boldmath$1.5\!\times\!10^{-11}$} & {\boldmath$1.3\!\times\!10^{-11}$} & {\boldmath$1.4\!\times\!10^{-11}$} & {\boldmath$2.1\!\times\!10^{-11}$} & {\boldmath$1.9\!\times\!10^{-11}$} & {\boldmath$6.2\!\times\!10^{-13}$} & {\boldmath$2.6\!\times\!10^{-12}$} \\
+ & \textbf{jaxipm-IL} & {\boldmath$1.4\!\times\!10^{-11}$} & {\boldmath$3.8\!\times\!10^{-12}$} & {\boldmath$2.5\!\times\!10^{-11}$} & {\boldmath$2.5\!\times\!10^{-11}$} & {\boldmath$2.6\!\times\!10^{-11}$} & {\boldmath$5.3\!\times\!10^{-13}$} & {\boldmath$2.3\!\times\!10^{-12}$} \\
+\midrule
+\multirow{5}{*}{$\|c\|_\infty$ max} & IPOPT-def. & $8.9\!\times\!10^{-9}$ & $9.9\!\times\!10^{-9}$ & $9.7\!\times\!10^{-9}$ & $9.8\!\times\!10^{-9}$ & $4.6\!\times\!10^{-9}$ & $9.1\!\times\!10^{-9}$ & $6.8\!\times\!10^{-9}$ \\
+ & IPOPT-64 & $8.9\!\times\!10^{-9}$ & $9.9\!\times\!10^{-9}$ & $9.7\!\times\!10^{-9}$ & $9.8\!\times\!10^{-9}$ & $4.6\!\times\!10^{-9}$ & $9.1\!\times\!10^{-9}$ & $6.8\!\times\!10^{-9}$ \\
+ & MadNLP & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ \\
+ & \textbf{jaxipm-SL} & {\boldmath$6.5\!\times\!10^{-9}$} & {\boldmath$9.8\!\times\!10^{-9}$} & {\boldmath$1.1\!\times\!10^{-9}$} & {\boldmath$1.6\!\times\!10^{-9}$} & {\boldmath$2.7\!\times\!10^{-9}$} & {\boldmath$2.4\!\times\!10^{-11}$} & {\boldmath$5.4\!\times\!10^{-11}$} \\
+ & \textbf{jaxipm-IL} & {\boldmath$9.5\!\times\!10^{-9}$} & {\boldmath$6.8\!\times\!10^{-9}$} & {\boldmath$8.0\!\times\!10^{-9}$} & {\boldmath$1.9\!\times\!10^{-9}$} & {\boldmath$3.7\!\times\!10^{-9}$} & {\boldmath$1.4\!\times\!10^{-11}$} & {\boldmath$3.9\!\times\!10^{-11}$} \\
+\midrule
+\multirow{5}{*}{ineq.\ max} & IPOPT-def. & $1.0\!\times\!10^{-8}$ & $1.0\!\times\!10^{-8}$ & $1.0\!\times\!10^{-8}$ & $1.5\!\times\!10^{-8}$ & $1.5\!\times\!10^{-8}$ & $9.8\!\times\!10^{-9}$ & $9.9\!\times\!10^{-9}$ \\
+ & IPOPT-64 & $1.0\!\times\!10^{-8}$ & $1.0\!\times\!10^{-8}$ & $1.0\!\times\!10^{-8}$ & $1.5\!\times\!10^{-8}$ & $1.5\!\times\!10^{-8}$ & $9.8\!\times\!10^{-9}$ & $9.9\!\times\!10^{-9}$ \\
+ & MadNLP & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $3.0\!\times\!10^{-8}$ & $3.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ & $2.0\!\times\!10^{-8}$ \\
+ & \textbf{jaxipm-SL} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.5\!\times\!10^{-8}$} & {\boldmath$1.5\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} \\
+ & \textbf{jaxipm-IL} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.5\!\times\!10^{-8}$} & {\boldmath$1.5\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} & {\boldmath$1.0\!\times\!10^{-8}$} \\
+\midrule
+\multirow{5}{*}{bound max} & IPOPT-def. & $9.1\!\times\!10^{-6}$ & $9.1\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ \\
+ & IPOPT-64 & $9.1\!\times\!10^{-6}$ & $9.1\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ \\
+ & MadNLP & $9.1\!\times\!10^{-6}$ & $9.1\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ & $9.2\!\times\!10^{-6}$ \\
+ & \textbf{jaxipm-SL} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} \\
+ & \textbf{jaxipm-IL} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} & {\boldmath$9.2\!\times\!10^{-6}$} \\
+\midrule
+\multirow{5}{*}{iters} & IPOPT-def. & 23.9/74 & 21.5/71 & 25.4/77 & 30.3/71 & 47.8/125 & 112.6/135 & 95.5/159 \\
+ mean/max & IPOPT-64 & 23.9/74 & 21.5/71 & 25.4/77 & 30.3/71 & 47.8/125 & 112.7/135 & 93.3/140 \\
+ & MadNLP & 43.3/125 & 32.2/184 & 38.0/84 & 47.4/116 & 57.8/136 & 127.7/162 & 184.1/217 \\
+ & \textbf{jaxipm-SL} & \textbf{69.0/487} & \textbf{71.6/468} & \textbf{54.2/472} & \textbf{54.3/494} & \textbf{46.9/165} & \textbf{115.7/176} & \textbf{241.7/498} \\
+ & \textbf{jaxipm-IL} & \textbf{55.9/274} & \textbf{51.9/252} & \textbf{43.1/181} & \textbf{44.4/237} & \textbf{45.8/129} & \textbf{113.6/182} & \textbf{227.3/484} \\
+\bottomrule
+\end{tabular}}
+\caption{\scriptsize Complete data for all seven problems (batch size and pool size are 500 and 2000 for navigation, 250 and 1000 for tracking, 75 and 300 for consensus). Every solver runs at FP64 with tolerance $10^{-8}$ and an iteration cap of 500 on a common problem pool with common initializations. Throughput is the mean and standard deviation over five repeated runs. Cores is throughput as a multiple of one core's share of the IPOPT-64 run. Success is the fraction of the pool that converged and cost is the mean and standard deviation over the converged pool. Violations are evaluated at the returned point with the same constraint functions for every solver, $\lVert c\rVert_\infty$ is the largest equality residual (mean and maximum over the pool), ineq.\ is the largest inequality violation and bound the largest bound violation (maximum over the pool). MadNLP's equality residual is exactly $2\times10^{-8}$ everywhere because it enforces the initial state as a relaxed bound. The $9\times10^{-6}$ bound violations are the relative bound relaxation on the rotor speed limits, applied identically by every solver. Iters is the mean and maximum iteration count over the pool.}
+\label{tab:full-data}
+\end{table}

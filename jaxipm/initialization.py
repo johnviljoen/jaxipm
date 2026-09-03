@@ -154,6 +154,7 @@ def initialize_problem_functions(
 def initialize_common_problem(
     _f, _c, _d, x_L, x_U, d_L, d_U, x0, p, function_args=[(), (), ()],
     calc_next_problem=None,
+    calc_next_problem_seq=None,
     override_sparse_funcs=None,
 ):
     """
@@ -198,26 +199,38 @@ def initialize_common_problem(
 
     nxr = nx + 2 * nyc + 2 * nyd
 
+    # FIX 2026-08-30: relax bounds RELATIVE to their magnitude, matching IPOPT's
+    # bound_relax_factor semantics (relax by scale*max(1,|bound|)) instead of the
+    # previous flat absolute relaxation. Previously our motor bound 925 was relaxed
+    # by 1e-8 while IPOPT relaxed it by 9.25e-6 (925x tighter for us) -> tiny
+    # slacks / large bound duals / ill-conditioned KKT at active bounds.
+    def _relax(b):  # b already [:, None]; inf-safe: inf - inf*scale stays inf
+        return p["bounds_scale"] * jnp.maximum(1.0, jnp.abs(b))
+
     if x_L is not None:
-        x_L = x_L[:, None] - p["bounds_scale"]
+        x_L = x_L[:, None]
+        x_L = x_L - _relax(x_L)
         ind_x_L = jnp.where(x_L != -jnp.inf)[0]
         nxL = ind_x_L.size
     else:
         nxL = 0
     if x_U is not None:
-        x_U = x_U[:, None] + p["bounds_scale"]
+        x_U = x_U[:, None]
+        x_U = x_U + _relax(x_U)
         ind_x_U = jnp.where(x_U != jnp.inf)[0]
         nxU = ind_x_U.size
     else:
         nxU = 0
     if d_L is not None:
-        d_L = d_L[:, None] - p["bounds_scale"]
+        d_L = d_L[:, None]
+        d_L = d_L - _relax(d_L)
         ind_d_L = jnp.where(d_L != -jnp.inf)[0]
         ndL = ind_d_L.size
     else:
         ndL = 0
     if d_U is not None:
-        d_U = d_U[:, None] + p["bounds_scale"]
+        d_U = d_U[:, None]
+        d_U = d_U + _relax(d_U)
         ind_d_U = jnp.where(d_U != jnp.inf)[0]
         ndU = ind_d_U.size
     else:
@@ -752,6 +765,7 @@ def initialize_common_problem(
         nstqf=nstqf,
         nstqfr=nstqfr,
         calc_next_problem=calc_next_problem,
+        calc_next_problem_seq=calc_next_problem_seq,
     )
 
 def initialize_inertia_correction_state(cp, token):
@@ -834,7 +848,8 @@ def initialize_iterate_flags_state():
         tiny_step_flag=jnp.array([[0]]),
         needs_resto_init=jnp.array([[0]]),
         needs_regular_init=jnp.array([[0]]), # 0=normal, 1=init (reset state + LS mults + real KKT solve)
-        should_exit_resto=jnp.array([[0]])  # True when restoration converged and returning to regular
+        should_exit_resto=jnp.array([[0]]),  # True when restoration converged and returning to regular
+        branch_id=jnp.array([[0]]),  # DEBUG census only (rebuttal run F)
     )
 
 def initialize_adaptive_mu_filter_state(cp):

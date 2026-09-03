@@ -6,6 +6,7 @@ from pathlib import Path
 from jaxipm.structures import Iterate, WatchdogState, OptimizationState
 from jaxipm.utils.eqx_utils import filter_tree_at_select, filter_select, filter_while_loop, order_token_after
 from jaxipm.quantities import calc_values_pre_mu, calc_values_post_mu
+from jaxipm.utils.kscope import KScope
 from jaxipm.barrier import calc_updated_mu
 from jaxipm.initialization import (
     post_initialize_line_search,
@@ -757,6 +758,7 @@ def execute_search(state, cp):
     # ITERATION START: resets and fallback handling
     # =========================================================================
 
+    _ks = KScope(); _ks("search_sfr_setup")
     original_state = state
 
     # Reset watchdog if mu changed (different barrier problem)
@@ -994,9 +996,11 @@ def execute_search(state, cp):
         state, (ref_theta, ref_barr, ref_gBD)
     )
 
+    _ks("search_ls_first")
     # First LS step
     state = line_search_step(state, cp)
 
+    _ks("search_wd_socinit")
     # WD outcome calculations (after first LS step)
     wd_accepted = state.ls.accept
     wd_at_max = state.wd.trial_iter >= cp.p["watchdog_trial_iter_max"]
@@ -1035,6 +1039,7 @@ def execute_search(state, cp):
 
     # SOC while loop - only runs if try_soc, else passes through unchanged
     # If theta decreased or in watchdog, SOC is skipped (state unchanged)
+    _ks("search_soc")
     state_after_soc = filter_while_loop(soc_cond, soc_step, state, cp)
     state_after_soc = filter_tree_at_select(
         try_soc.squeeze(), lambda t: t, state, state_after_soc, state
@@ -1053,9 +1058,11 @@ def execute_search(state, cp):
         (alpha_min, state.cqpo.alpha_pr, jnp.array([[0]]))  # Reset alpha_pr and n_steps for fresh BT
     )
 
+    _ks("search_bt")
     # BT while loop - runs if SOC didn't accept (or was skipped)
     state_after_bt = filter_while_loop(line_search_cond, line_search_step, state_after_soc, cp)
 
+    _ks("search_select")
     # Select SOC result if accepted, else BT result
     state_soc_bt = filter_tree_at_select(
         soc_accepted.squeeze(),
@@ -1291,6 +1298,27 @@ def execute_search(state, cp):
         )
     )
 
+    # Rebuttal run F (branch census): record which control-flow branch this
+    # body execution took. Priority mirrors the final selection above
+    # (SFR > TS > WD > full-resto entry > SOC/BT); +8 flags an iteration run
+    # inside the restoration phase. DEBUG_MODE only -- the throughput path is
+    # untouched (static python branch).
+    if cp.p["DEBUG_MODE"]:
+        # soc_accepted is also true when the FIRST trial step was accepted
+        # (SOC skipped, ls.accept carried through), so SOC fired only if the
+        # SOC loop actually ran (try_soc) and its trial was accepted.
+        _soc_fired = (try_soc > 0) & (soc_accepted > 0)
+        _backtracked = state_soc_bt.ls.n_steps > 0
+        _bid = jnp.where(is_sfr > 0, 4,
+               jnp.where(is_ts > 0, 3,
+               jnp.where(is_wd > 0, 2,
+               jnp.where(must_go_full_resto > 0, 5,
+               jnp.where(_soc_fired, 1,
+               jnp.where(_backtracked, 6, 0))))))
+        branch_id_out = (jnp.reshape(_bid, (1, 1))
+                         + 8 * jnp.reshape(state.fl.in_restoration, (1, 1))).astype(state.fl.branch_id.dtype)
+        state = eqx.tree_at(lambda t: t.fl.branch_id, state, branch_id_out)
+
     # Apply all updates to state
     state = eqx.tree_at(
         lambda t: (
@@ -1362,12 +1390,14 @@ def execute_search(state, cp):
         )
     )
 
+    _ks("search_select")
     # bypass execute search if we are initializing regular.
     state = filter_select(
         original_state.fl.needs_regular_init.squeeze(),
         (original_state,),
         (state,)
     )[0]
+    _ks.close()
 
     return state
 
@@ -1383,6 +1413,7 @@ def post_process(original_state, result, cp):
 
     # Step 0: Potentially startup resto - therefore save state
     # Only save when entering restoration (init_resto), otherwise preserve existing saved state
+    _ks = KScope(); _ks("pp_resto_init")
     saved_fl = jax.lax.cond(init_resto, lambda: result.fl, lambda: result.saved_fl)
     saved_wd = jax.lax.cond(init_resto, lambda: result.wd, lambda: result.saved_wd)
     saved_ls = jax.lax.cond(init_resto, lambda: result.ls, lambda: result.saved_ls)
@@ -1468,6 +1499,7 @@ def post_process(original_state, result, cp):
     # perform expensive sparse function evaluations
     rnx = cp.nx + cp.nyc * 2 + cp.nyd * 2
 
+    _ks("pp_derivs")
     # padded regular jacobians
     pad_rows = cp.nyc * 2 + cp.nyd * 2 
     reg_jac_f_unpadded = cp.nstqf.calc_jac_f(it.x[:cp.nx], *f_args).todense()
@@ -1584,6 +1616,7 @@ def post_process(original_state, result, cp):
     )
     dms = d - it.s
 
+    _ks("pp_quantities")
     # common operations
     fun_outs = (f, c, d)
     jacobians = (jac_f, jac_c, jac_d)
@@ -1858,8 +1891,10 @@ def post_process(original_state, result, cp):
     init_primal_inf = jnp.where(exiting, saved_init_primal_inf, init_primal_inf)
     fl = jax.lax.cond(exiting, lambda: saved_fl, lambda: fl)
 
+    _ks("pp_pre_mu")
     # Step 5: Recalculate pre-mu quantities (it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, iter_count)
     cqpr, ic, ls_token = calc_values_pre_mu(it, ic, ls_token, cp, fl, fun_outs, jacobians, hessians, quantities, iter_count)
+    _ks("pp_mu_update")
     # clear the flag now we have the LS direction
     fl = eqx.tree_at(
         lambda t: (t.needs_resto_init, t.needs_regular_init),
@@ -1985,8 +2020,10 @@ def post_process(original_state, result, cp):
         ),
     )
 
+    _ks("pp_post_mu")
     # Step 7: Recalculate post-mu quantities (LS handled by dedicated solver in calc_values_pre_mu)
     cqpo = calc_values_post_mu(it, mu, tau, cqpr, ic, cp, fl)
+    _ks("pp_select_term")
     # result = eqx.tree_at(lambda t: t.cqpo, result, cqpo)
 
     # Step 8: Update line search state for next iteration
@@ -2072,6 +2109,7 @@ def post_process(original_state, result, cp):
         iter_count=iter_count, args=args
     )
 
+    _ks.close()
     return processed_result, terminate
 
 if __name__ == "__main__":

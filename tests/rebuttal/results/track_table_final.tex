@@ -1,0 +1,33 @@
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+Solver & solves/s & \makecell{equiv.\\cores} & \makecell{succ\\ (\%)} & cost & \makecell{iters\\ mean/max} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 1.0$ m/s}} \\
+IPOPT-default & 6.06\,$\pm$\,0.30 & 1.65 & 100 & 265.7\,$\pm$\,98.7 & 25.4 / 77 \\
+IPOPT-64 & 234.7\,$\pm$\,9.5 & 64 & 100 & 265.7\,$\pm$\,98.7 & 25.4 / 77 \\
+MadNLP & 2.97\,$\pm$\,0.99 & 0.81 & 100 & 261.7\,$\pm$\,92.0 & 38.0 / 84 \\
+\textbf{jaxipm-SL} & \textbf{13.27\,$\pm$\,0.29} & \textbf{3.62} & \textbf{99.5} & \textbf{249.3\,$\pm$\,79.3} & \textbf{54.3 / 447} \\
+\textbf{jaxipm-IL} & \textbf{90.93\,$\pm$\,1.28} & \textbf{24.8} & \textbf{100} & \textbf{244.3\,$\pm$\,75.4} & \textbf{43.4 / 213} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 1.5$ m/s}} \\
+IPOPT-default & 4.61\,$\pm$\,0.27 & 1.59 & 100 & 556.7\,$\pm$\,140.9 & 30.3 / 71 \\
+IPOPT-64 & 185.4\,$\pm$\,3.8 & 64 & 100 & 556.7\,$\pm$\,140.9 & 30.3 / 71 \\
+MadNLP & 2.02\,$\pm$\,0.01 & 0.70 & 100 & 555.8\,$\pm$\,138.3 & 47.4 / 116 \\
+\textbf{jaxipm-SL} & \textbf{11.87\,$\pm$\,0.14} & \textbf{4.10} & \textbf{97.1} & \textbf{543.1\,$\pm$\,126.2} & \textbf{56.4 / 470} \\
+\textbf{jaxipm-IL} & \textbf{82.28\,$\pm$\,0.51} & \textbf{28.4} & \textbf{100} & \textbf{539.9\,$\pm$\,121.0} & \textbf{43.0 / 225} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 2.0$ m/s}} \\
+IPOPT-default & 2.55\,$\pm$\,0.14 & 1.55 & 100 & 1146.7\,$\pm$\,126.9 & 47.8 / 125 \\
+IPOPT-64 & 105.4\,$\pm$\,3.7 & 64 & 100 & 1146.7\,$\pm$\,126.9 & 47.8 / 125 \\
+MadNLP & 1.65\,$\pm$\,0.00 & 1.00 & 100 & 1147.5\,$\pm$\,121.2 & 57.8 / 136 \\
+\textbf{jaxipm-SL} & \textbf{11.18\,$\pm$\,0.07} & \textbf{6.79} & \textbf{86.1} & \textbf{1140.3\,$\pm$\,124.4} & \textbf{47.1 / 122} \\
+\textbf{jaxipm-IL} & \textbf{73.24\,$\pm$\,0.60} & \textbf{44.5} & \textbf{100} & \textbf{1142.2\,$\pm$\,127.9} & \textbf{46.3 / 143} \\
+\bottomrule
+\end{tabular}}
+\caption{\small Per-solve throughput and solution quality on the quadrotor reference-tracking problem with three time-varying obstacles. We control difficulty by varying the average velocity $\bar{v}$ of the reference trajectory. Columns as in Table~\ref{tab:nav-throughput}.}
+\label{tab:track-avoid-throughput}
+\end{table}

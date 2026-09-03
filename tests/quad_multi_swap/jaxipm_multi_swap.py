@@ -63,8 +63,10 @@ quad_params["x_ub"] = np.array([
 ])
 
 
-def start_state(i: int, N_quads: int, R: float) -> np.ndarray:
-    theta = 2.0 * np.pi * i / N_quads
+def start_state(i: int, N_quads: int, R: float, phi: float = 0.0) -> np.ndarray:
+    """Quad i's 13-state start: position on the circle at base angle
+    2*pi*i/N_quads rotated by the per-instance formation offset `phi`."""
+    theta = 2.0 * np.pi * i / N_quads + phi
     return np.array([
         R * np.cos(theta), R * np.sin(theta), 0.0,
         1.0, 0.0, 0.0, 0.0,
@@ -73,9 +75,44 @@ def start_state(i: int, N_quads: int, R: float) -> np.ndarray:
     ])
 
 
-def goal_xyz(i: int, N_quads: int, R: float) -> np.ndarray:
-    theta = 2.0 * np.pi * i / N_quads + np.pi
+def goal_xyz(i: int, N_quads: int, R: float, phi: float = 0.0) -> np.ndarray:
+    theta = 2.0 * np.pi * i / N_quads + np.pi + phi
     return np.array([R * np.cos(theta), R * np.sin(theta), 0.0])
+
+
+# Low-discrepancy strides for the varied-IC pool: language-independent
+# (numpy AND the Julia MadNLP driver reproduce the identical pool without any
+# shared RNG state) and jointly equidistributed on the 2-torus, so the
+# (start-rotation, goal-offset) pairs cover their whole domain uniformly.
+POOL_ALPHA = 0.6180339887498949    # frac((sqrt(5)-1)/2), golden-ratio stride
+POOL_BETA = 0.41421356237309515    # sqrt(2)-1, silver-ratio stride
+POOL_HALF_RANGE = np.deg2rad(5.0)   # +/-5 deg leeway on starts AND goals
+
+
+def multi_swap_pool(N_quads: int, n_pool: int, R: float = R):
+    """Deterministic varied-IC pool of `n_pool` instances (2026-08-31, v3):
+    the start formation is rotated by phi_k in [-5 deg, +5 deg) around the
+    original static starts, and the goal formation INDEPENDENTLY by
+    psi_k = phi_k + delta_k with delta_k in [-5 deg, +5 deg) around
+    antipodal -- both from low-discrepancy strides (language-independent,
+    jointly equidistributed). The tight sectors keep every instance a
+    near-antipodal crossing, forcing strong quad interaction, while start and
+    goal still vary independently. Hover cold guess stays feasible (rigid
+    formations keep pairwise separations at 2*R*sin(pi/N_quads) > MIN_DIST).
+
+    Returns (phis (n_pool,), psis (n_pool,), starts (n_pool, N_quads, 13),
+             goals (n_pool, N_quads, 3), goals_full (n_pool, N_quads, 13))."""
+    k = np.arange(n_pool)
+    phis = POOL_HALF_RANGE * (2.0 * np.mod(k * POOL_ALPHA, 1.0) - 1.0)
+    deltas = POOL_HALF_RANGE * (2.0 * np.mod(k * POOL_BETA, 1.0) - 1.0)
+    psis = phis + deltas
+    starts = np.stack([[start_state(i, N_quads, R, phi) for i in range(N_quads)]
+                       for phi in phis])
+    goals = np.stack([[goal_xyz(i, N_quads, R, psi) for i in range(N_quads)]
+                      for psi in psis])
+    goals_full = np.concatenate(
+        [goals, np.zeros((n_pool, N_quads, 10))], axis=-1)
+    return phis, psis, starts, goals, goals_full
 
 
 def quadcopter_multi_swap(N_quads: int = 2, N: int = N_HORIZON, R: float = R):
@@ -183,6 +220,113 @@ def quadcopter_multi_swap(N_quads: int = 2, N: int = N_HORIZON, R: float = R):
     return f, c, d, x_L, x_U, d_L, d_U, z_init, gt, aux
 
 
+def quadcopter_multi_swap_pool(N_quads: int = 2, N: int = N_HORIZON, R: float = R):
+    """Pool-parametric variant of `quadcopter_multi_swap` (2026-08-31, varied
+    ICs): the per-instance start states and goal vectors are RUNTIME arguments
+    instead of baked-in constants, so a batch can hold N_batch different
+    formation rotations (see `multi_swap_pool`) and hot-restart can inject new
+    instances, exactly like the nav test's per-slot x0.
+
+      f(z, goals_full_flat)   goals_full_flat: (N_quads*13,) flat per-quad
+                              13-vector goals (zeros outside position slots)
+      c(z, starts_flat)       starts_flat: (N_quads*13,) flat per-quad starts
+      d(z)                    unchanged (instance-independent)
+
+    z_init / bounds / dims are identical to `quadcopter_multi_swap` (instance
+    phi=0). Returns the same tuple shape; aux has no starts/goals (they are
+    per-instance now)."""
+    nx_dim, nu_dim, Ts = 13, 4, TS
+
+    stride_x = N * nx_dim
+    stride_u = (N - 1) * nu_dim
+
+    def xu_to_z(xs, us):
+        return jnp.hstack([x.flatten() for x in xs] + [u.flatten() for u in us])
+
+    def z_to_xu(z):
+        xs = [z[i*stride_x:(i+1)*stride_x].reshape(N, nx_dim)
+              for i in range(N_quads)]
+        u_base = N_quads * stride_x
+        us = [z[u_base + i*stride_u: u_base + (i+1)*stride_u].reshape(N-1, nu_dim)
+              for i in range(N_quads)]
+        return xs, us
+
+    # Instance-0 geometry for z_init (identical to the fixed problem).
+    starts0 = [start_state(i, N_quads, R) for i in range(N_quads)]
+    w_hover = 522.9847140714692
+    state0_list = [jnp.tile(jnp.asarray(s), (N, 1)) for s in starts0]
+    input0_list = [jnp.ones((N - 1, nu_dim)) * w_hover for _ in range(N_quads)]
+    z_init = xu_to_z(state0_list, input0_list)
+
+    def f(z, goals_full_flat):
+        Q = jnp.array([1, 1, 1, 0, 0, 0, 0, 0.1, 0.1, 0.1, 1, 1, 1])
+        xs, _ = z_to_xu(z)
+        total = jnp.asarray(0.0)
+        for i in range(N_quads):
+            dx = xs[i] - goals_full_flat[i*nx_dim:(i+1)*nx_dim]
+            total = total + jnp.sum(Q * dx ** 2)
+        return total
+
+    def c(z, starts_flat):
+        xs, us = z_to_xu(z)
+        constraints = []
+        for i in range(N_quads):
+            constraints.append(xs[i][0] - starts_flat[i*nx_dim:(i+1)*nx_dim])
+            for k in range(N - 1):
+                x_next = xs[i][k] + f_jnp(xs[i][k], us[i][k], quad_params) * Ts
+                constraints.append(xs[i][k + 1] - x_next)
+        return jnp.concatenate(constraints).flatten()
+
+    min_dist_sq = MIN_DIST ** 2
+
+    def d(z):
+        xs, _ = z_to_xu(z)
+        cl = []
+        for i in range(N_quads):
+            for j in range(i + 1, N_quads):
+                for k in range(N - 1):
+                    diff = xs[i][k, :3] - xs[j][k, :3]
+                    cl.append(jnp.sum(diff ** 2) - min_dist_sq)
+        return jnp.hstack(cl)
+
+    gt = None
+
+    # Variable bounds (identical to the fixed problem).
+    x_lb = quad_params["x_lb"]
+    x_ub = quad_params["x_ub"]
+    finite_lb = np.where(~np.isinf(x_lb))[0]
+    finite_ub = np.where(~np.isinf(x_ub))[0]
+
+    z_lb = np.full(z_init.size, -np.inf, dtype=np.float64)
+    z_ub = np.full(z_init.size,  np.inf, dtype=np.float64)
+
+    for i in range(N_quads):
+        base = i * stride_x
+        for k in range(N):
+            for s in finite_lb:
+                z_lb[base + k * nx_dim + int(s)] = x_lb[int(s)]
+            for s in finite_ub:
+                z_ub[base + k * nx_dim + int(s)] = x_ub[int(s)]
+
+    u_base = N_quads * stride_x
+    for i in range(N_quads):
+        base = u_base + i * stride_u
+        for k in range(N - 1):
+            for m in range(nu_dim):
+                z_lb[base + k * nu_dim + m] = quad_params["minWmotor"]
+                z_ub[base + k * nu_dim + m] = quad_params["maxWmotor"]
+
+    x_L = jnp.asarray(z_lb)
+    x_U = jnp.asarray(z_ub)
+
+    d_L = jnp.zeros(d(z_init).shape)
+    d_U = jnp.ones(d(z_init).shape) * jnp.inf
+
+    aux = [z_to_xu, xu_to_z, quad_params, N_quads, N, R]
+
+    return f, c, d, x_L, x_U, d_L, d_U, z_init, gt, aux
+
+
 if __name__ == "__main__":
     import os
     from time import time
@@ -190,12 +334,27 @@ if __name__ == "__main__":
     with open("jaxipm/params.json") as _pf:
         p = json.load(_pf)
 
-    # if os.environ.get("HOT_RESTART", "1") == "0":
-    #     p["hot_restarting"] = False
-    #     print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
-    # if os.environ.get("JAXIPM_DEBUG", "0") == "1":
-    #     p["DEBUG_MODE"] = True
-    #     print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 — iter_buffer enabled")
+    import os
+    # Rebuttal hooks (Appendix A of the experiment spec). All default to the
+    # paper configuration; set only for ablations.
+    #   HOT_RESTART=0        -> hot_restarting=False (warm-start / fusion-only mode)
+    #   JAXIPM_DEBUG=1       -> DEBUG_MODE=True (per-problem iter/term buffers;
+    #                           depresses throughput -- never for timing runs)
+    #   JAXIPM_IR_NSTEPS=k   -> iterative-refinement depth override (paper: 0)
+    #   JAXIPM_OUT_SUFFIX=s  -> appended to the results filename so ablation
+    #                           runs never overwrite the headline npz files
+    if os.environ.get("HOT_RESTART", "1") == "0":
+        p["hot_restarting"] = False
+        print("[jaxipm] hot_restarting DISABLED via HOT_RESTART=0")
+    if os.environ.get("JAXIPM_DEBUG", "0") == "1":
+        p["DEBUG_MODE"] = True
+        print("[jaxipm] DEBUG_MODE=true via JAXIPM_DEBUG=1 -- iter_buffer enabled")
+    if os.environ.get("JAXIPM_IR_NSTEPS"):
+        p["ir_nsteps"] = int(os.environ["JAXIPM_IR_NSTEPS"])
+        print(f"[jaxipm] ir_nsteps={p['ir_nsteps']} via JAXIPM_IR_NSTEPS")
+    OUT_SUFFIX = os.environ.get("JAXIPM_OUT_SUFFIX", "")
+    if OUT_SUFFIX:
+        print(f"[jaxipm] results filename suffix: {OUT_SUFFIX!r}")
 
     # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
     # os.environ['CUDA_VISIBLE_DEVICES'] = str(p["gpu_id"])
@@ -271,8 +430,8 @@ if __name__ == "__main__":
         total_time = t2 - t1
         print(f"Throughput (warm):      {total_time*1000:.1f} ms")
 
-        if len(tp_out) == 5:
-            final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out
+        if len(tp_out) >= 5:
+            final_state, solution_buffer, write_idx, term_buffer, iter_buffer = tp_out[:5]
         else:
             final_state, solution_buffer, write_idx = tp_out
             iter_buffer = None
@@ -314,7 +473,7 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"jaxipm_{N_quads}_results.npz")
+        out_path = os.path.join(logs_dir, f"jaxipm_{N_quads}{OUT_SUFFIX}_results.npz")
         if term_buffer is not None:
             terms = np.asarray(term_buffer)[:n_collected].astype(np.int32)
         else:

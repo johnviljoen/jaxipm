@@ -1,0 +1,505 @@
+{
+ "label": "track_v1.5_b250",
+ "scenario": "track",
+ "variant": "1.5",
+ "N_batch": 250,
+ "warm_solves": 500,
+ "profile_iters": 10,
+ "timing_iters": 30,
+ "wall_ms": {
+  "median": 0.13223213200399186,
+  "min": 0.12203999899793416,
+  "max": 1.2343389810121153,
+  "all": [
+   1234.3389810121153,
+   140.42496000183746,
+   140.07736500934698,
+   134.60493899765424,
+   132.00540299294516,
+   125.35259700962342,
+   127.53298599272966,
+   124.1454349947162,
+   129.4916789920535,
+   122.03999899793416,
+   135.98868300323375,
+   136.234326986596,
+   130.53541802219115,
+   130.27853300445713,
+   128.42269000248052,
+   143.35389199550264,
+   125.189293990843,
+   130.532128008781,
+   130.19899200298823,
+   135.70081800571643,
+   142.70190100069158,
+   137.30306600336917,
+   132.45886101503856,
+   151.5013349999208,
+   126.10568999662064,
+   135.6417069910094,
+   155.83406100631692,
+   131.65132599533536,
+   127.92566200369038,
+   141.64170197909698
+  ]
+ },
+ "device_ms_per_iter": 116.0144303,
+ "kernels_per_iter": 3147.9,
+ "regions_ms": {
+  "unscoped": 0.6343688000000001,
+  "search_ls_first": 1.2868381,
+  "search_sfr_setup": 7.5589154,
+  "search_wd_socinit": 0.11520989999999999,
+  "memcpy": 2.052324,
+  "search_soc": 66.1507696,
+  "cudss_analysis": 2.8297383,
+  "cudss_solve": 3.9249651,
+  "cudss_factorize": 17.445472300000002,
+  "search_bt": 5.2033895,
+  "search_select": 0.036393800000000004,
+  "pp_resto_init": 0.4934165,
+  "pp_derivs": 0.8113381,
+  "pp_quantities": 2.4804557999999997,
+  "pp_mu_update": 2.9945041,
+  "pre_mu_misc": 0.24765610000000002,
+  "kkt_assembly": 0.7497526999999999,
+  "pp_select_term": 0.12152980000000001,
+  "ic_loop": 0.8100034,
+  "hr_restart": 0.0256706,
+  "post_mu_rhs": 0.0214815,
+  "post_mu_transform": 0.0167842,
+  "ls_mult_factor_solve": 0.0034527
+ },
+ "custom_calls_ms": {
+  "cudss::copy_csr_columns_ker": 0.0009665,
+  "cudss::radix_sort_ker": 0.2044362,
+  "cudss::trans_nnz_per_row_ker": 0.015145700000000002,
+  "offsets_par_ker": 1.0186189,
+  "cudss::trans_columns_ker": 0.0151489,
+  "cudss::xadj_ker": 0.0006144,
+  "cudss::adjncy_ker": 0.004259300000000001,
+  "cudss::dependency_map_ker": 0.0729507,
+  "cudss::nnz_per_col_ker": 0.2545772,
+  "cudss::supernode_map_offsets_ker": 0.0044832,
+  "cudss::offsets_ker": 0.0012255999999999999,
+  "cudss::supernode_map_ker": 0.0083265,
+  "cudss::supernode_dependant_ker": 0.000256,
+  "cudss::nnz_count_ker": 0.0007104,
+  "cudss::set_default_ker": 0.000208,
+  "cudss::csc_rows_ker": 0.46830940000000004,
+  "cudss::define_superpanel_ker": 0.0241249,
+  "cudss::updates_offsets_ker": 0.0019648,
+  "cudss::blocks_ker": 0.0020608000000000002,
+  "cudss::updates_ker": 0.0023872,
+  "cudss::compute_hybrid_minimum_chunk_size_ker": 0.0279234,
+  "cudss::map_offsets_ker": 0.001904,
+  "cudss::map_ker": 0.0961253,
+  "cudss::modify_update_ker": 0.0329857,
+  "cudss::count_dep_fwd_bwd_ker": 0.0110593,
+  "cudss::fwd_bwd_order_step_1_ker": 0.0107999,
+  "cudss::fwd_bwd_order_step_2_ker": 0.027542599999999997,
+  "cudss::copy_matrix_ker": 0.281854,
+  "cudss::factorize_ker": 16.4343571,
+  "cudss::independent_ker": 0.0135775,
+  "cudss::plain_map_ker": 0.0136641,
+  "cudss::factorize_v3_ker": 1.0111151999999999,
+  "cudss::perm_ker": 0.0731233,
+  "cudss::fwd_ker": 1.9736155,
+  "cudss::diag_ker": 0.0836359,
+  "cudss::bwd_ker": 1.9279218999999999,
+  "cudss::upd_marker_bwd_ker": 0.0123684,
+  "cudss::copy_and_convert_device_device_ker": 0.0229318,
+  "cudss::return_lu_diag_ker": 0.042896199999999995
+ },
+ "custom_calls_per_iter": {
+  "cudss::copy_csr_columns_ker": 0.1,
+  "cudss::radix_sort_ker": 0.4,
+  "cudss::trans_nnz_per_row_ker": 0.1,
+  "offsets_par_ker": 0.6,
+  "cudss::trans_columns_ker": 0.1,
+  "cudss::xadj_ker": 0.1,
+  "cudss::adjncy_ker": 0.1,
+  "cudss::dependency_map_ker": 1.0,
+  "cudss::nnz_per_col_ker": 0.2,
+  "cudss::supernode_map_offsets_ker": 0.1,
+  "cudss::offsets_ker": 0.1,
+  "cudss::supernode_map_ker": 0.1,
+  "cudss::supernode_dependant_ker": 0.1,
+  "cudss::nnz_count_ker": 0.1,
+  "cudss::set_default_ker": 0.1,
+  "cudss::csc_rows_ker": 1.0,
+  "cudss::define_superpanel_ker": 0.1,
+  "cudss::updates_offsets_ker": 0.1,
+  "cudss::blocks_ker": 0.1,
+  "cudss::updates_ker": 0.1,
+  "cudss::compute_hybrid_minimum_chunk_size_ker": 0.1,
+  "cudss::map_offsets_ker": 0.1,
+  "cudss::map_ker": 0.1,
+  "cudss::modify_update_ker": 0.1,
+  "cudss::count_dep_fwd_bwd_ker": 0.2,
+  "cudss::fwd_bwd_order_step_1_ker": 2.4,
+  "cudss::fwd_bwd_order_step_2_ker": 4.3,
+  "cudss::copy_matrix_ker": 6.9,
+  "cudss::factorize_ker": 6.9,
+  "cudss::independent_ker": 6.9,
+  "cudss::plain_map_ker": 6.9,
+  "cudss::factorize_v3_ker": 6.9,
+  "cudss::perm_ker": 18.0,
+  "cudss::fwd_ker": 18.0,
+  "cudss::diag_ker": 9.0,
+  "cudss::bwd_ker": 18.0,
+  "cudss::upd_marker_bwd_ker": 9.0,
+  "cudss::copy_and_convert_device_device_ker": 9.6,
+  "cudss::return_lu_diag_ker": 4.8
+ },
+ "branch_unique_ms": 79.0282844,
+ "linalg_ms": 25.013631800000002,
+ "fusion_tax_frac": 0.6811935738997462,
+ "top_kernels": [
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_fusion_52",
+   "ms_per_iter": 61.053308
+  },
+  {
+   "region": "cudss_factorize",
+   "kernel": "void cudss::factorize_ker<long, double, int, double, 32, 1, 0, 0, 1, 0, 16, 32>(",
+   "ms_per_iter": 16.4343571
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "input_reduce_fusion_171",
+   "ms_per_iter": 5.3244020999999995
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_concatenate_fusion",
+   "ms_per_iter": 2.0662978
+  },
+  {
+   "region": "cudss_solve",
+   "kernel": "void cudss::fwd_ker<long, double, int, 32, 1, 0, 32, 1, 16, 32, 16, 1, 1, 32>(un",
+   "ms_per_iter": 1.9736155
+  },
+  {
+   "region": "cudss_solve",
+   "kernel": "void cudss::bwd_ker<long, double, int, 32, 32, 16, 2, 16, 1, 0, 16, 1, 1, 32, 32",
+   "ms_per_iter": 1.9279218999999999
+  },
+  {
+   "region": "pp_quantities",
+   "kernel": "input_reduce_fusion_169",
+   "ms_per_iter": 1.7761906
+  },
+  {
+   "region": "search_bt",
+   "kernel": "input_concatenate_fusion_3",
+   "ms_per_iter": 1.1841558
+  },
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_fusion_43",
+   "ms_per_iter": 1.0304401
+  },
+  {
+   "region": "cudss_factorize",
+   "kernel": "void cudss::factorize_v3_ker<long, double, int, double, 128, 8, 1, 0, 0, 1, 1, 1",
+   "ms_per_iter": 1.0111151999999999
+  },
+  {
+   "region": "search_ls_first",
+   "kernel": "input_reduce_fusion_165",
+   "ms_per_iter": 0.929569
+  },
+  {
+   "region": "memcpy",
+   "kernel": "MemcpyD2D",
+   "ms_per_iter": 0.6456669
+  },
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_fusion_53",
+   "ms_per_iter": 0.644317
+  },
+  {
+   "region": "memcpy",
+   "kernel": "MemcpyD2H",
+   "ms_per_iter": 0.5882531
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_add_select_fusion",
+   "ms_per_iter": 0.5841434
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion",
+   "ms_per_iter": 0.5825568000000001
+  },
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_select_fusion_3",
+   "ms_per_iter": 0.5547352
+  },
+  {
+   "region": "pp_mu_update",
+   "kernel": "input_reduce_select_fusion_1",
+   "ms_per_iter": 0.5430713
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "input_reduce_fusion_159",
+   "ms_per_iter": 0.5199831
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::csc_rows_ker<long, int, 256>(int, int, int const*, int const*, long ",
+   "ms_per_iter": 0.46830940000000004
+  },
+  {
+   "region": "memcpy",
+   "kernel": "memcpy32_post",
+   "ms_per_iter": 0.45097190000000004
+  },
+  {
+   "region": "pp_derivs",
+   "kernel": "loop_concatenate_fusion_9",
+   "ms_per_iter": 0.3590608
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_add_multiply_slice_subtract_fusion",
+   "ms_per_iter": 0.35355040000000004
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_select_fusion_16",
+   "ms_per_iter": 0.3491006
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, int, int, 128, 1>(long, long*, int*, int*, int*, int)",
+   "ms_per_iter": 0.33231190000000005
+  },
+  {
+   "region": "search_soc",
+   "kernel": "loop_concatenate_fusion_3",
+   "ms_per_iter": 0.33204009999999995
+  },
+  {
+   "region": "memcpy",
+   "kernel": "Memset 3",
+   "ms_per_iter": 0.29617129999999997
+  },
+  {
+   "region": "search_bt",
+   "kernel": "loop_select_fusion_20",
+   "ms_per_iter": 0.2822362
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::copy_matrix_ker<long, double, int, int, int, double, 128>(int, int, ",
+   "ms_per_iter": 0.281854
+  },
+  {
+   "region": "search_soc",
+   "kernel": "loop_concatenate_fusion_1",
+   "ms_per_iter": 0.2727122
+  },
+  {
+   "region": "ic_loop",
+   "kernel": "loop_select_fusion_15",
+   "ms_per_iter": 0.2616753
+  },
+  {
+   "region": "search_soc",
+   "kernel": "input_reduce_fusion_55",
+   "ms_per_iter": 0.2181217
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void cudss::nnz_per_col_ker<long, int, 128, 1>(int, long const*, int const*, int",
+   "ms_per_iter": 0.1973001
+  },
+  {
+   "region": "search_sfr_setup",
+   "kernel": "input_reduce_fusion_212",
+   "ms_per_iter": 0.1793638
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, int, 128, 2>(long, long*, long*, int*, int*, in",
+   "ms_per_iter": 0.1771304
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, long, 128, 2>(long, long*, long*, long*, int*, ",
+   "ms_per_iter": 0.176356
+  },
+  {
+   "region": "kkt_assembly",
+   "kernel": "input_scatter_fusion_15",
+   "ms_per_iter": 0.17594
+  },
+  {
+   "region": "search_soc",
+   "kernel": "loop_concatenate_fusion_2",
+   "ms_per_iter": 0.16933510000000002
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<int, int, int, 128, 1>(int, int*, int*, int*, int*, int)",
+   "ms_per_iter": 0.1664839
+  },
+  {
+   "region": "cudss_analysis",
+   "kernel": "void offsets_par_ker<long, long, long, 128, 1>(long, long*, long*, long*, int*, ",
+   "ms_per_iter": 0.1663367
+  }
+ ],
+ "iter_count_range": [
+  0,
+  127
+ ],
+ "spineax": {
+  "after_jit": {
+   "registry_size": 4,
+   "cache_capacity": 64,
+   "rebuild_count": 0
+  },
+  "after_timing": {
+   "registry_size": 5,
+   "cache_capacity": 64,
+   "rebuild_count": 1
+  },
+  "after_profile": {
+   "registry_size": 6,
+   "cache_capacity": 64,
+   "rebuild_count": 2
+  }
+ },
+ "metadata": {
+  "jaxipm_commit": "b08b4a6cba1d20c18413b22e88c4ab74e4165036",
+  "jaxipm_dirty": true,
+  "spineax_commit": "4b2868227c603a4b445d3af3e934faf9f2904492",
+  "hostname": "iconlab",
+  "gpu": "6",
+  "jax": "0.10.2",
+  "params": {
+   "DEBUG_MODE": false,
+   "VALIDATION_MODE": false,
+   "auto_scaling": true,
+   "hot_restarting": true,
+   "ir_nsteps": 0,
+   "gpu_id": 1,
+   "Ktol": 0.0001,
+   "accept_after_max_steps": false,
+   "accept_every_trial_step": false,
+   "acceptable_compl_inf_tol": 0.01,
+   "acceptable_constr_viol_tol": 0.01,
+   "acceptable_dual_inf_tol": 10000000000.0,
+   "acceptable_iter": 15,
+   "acceptable_obj_change_tol": 1e+20,
+   "acceptable_tol": 1e-06,
+   "adaptive_mu_monotone_init_factor": 0.8,
+   "adaptive_mu_safeguard_factor": 0.0,
+   "alpha_for_y_tol": 10,
+   "alpha_min_frac": 0.05,
+   "alpha_red_factor": 0.5,
+   "barrier_tol_factor": 10.0,
+   "bound_frac": 0.01,
+   "bound_mult_init_val": 1.0,
+   "bound_mult_reset_threshold": 1000.0,
+   "bound_push": 0.01,
+   "bounds_scale": 1e-08,
+   "compl_inf_tol": 0.0001,
+   "constr_mult_init_max": 1000.0,
+   "constr_mult_reset_threshold": 0.0,
+   "constr_viol_tol": 0.0001,
+   "constraint_violation_norm_type": 1,
+   "corrector_compl_avrg_ref_fact": 1.0,
+   "degen_iters_max": 3,
+   "delta": 1.0,
+   "diverging_iterates_tol": 1e+20,
+   "dual_inf_tol": 1.0,
+   "eta_mu_exponent": 0.5,
+   "eta_phi": 1e-08,
+   "filter_margin_fact": 1e-05,
+   "filter_max_margin": 1.0,
+   "filter_reset_trigger": 5,
+   "filter_size": 100,
+   "first_hessian_perturbation": 0.0001,
+   "gamma_phi": 1e-08,
+   "gamma_theta": 1e-05,
+   "jacobian_regularization_exponent": 0.25,
+   "jacobian_regularization_value": 1e-08,
+   "kappa_d": 1e-05,
+   "kappa_sigma": 10000000000.0,
+   "kappa_soc": 0.99,
+   "max_filter_resets": 5,
+   "max_hessian_perturbation": 1e+20,
+   "max_iter": 500,
+   "max_soc": 4,
+   "max_soft_resto_iters": 10,
+   "min_hessian_perturbation": 1e-20,
+   "mu_init": 0.1,
+   "mu_linear_decrease_factor": 0.2,
+   "mu_max_fact": 1000.0,
+   "mu_max_upper": 100000.0,
+   "mu_min_default": 1e-11,
+   "mu_superlinear_decrease_power": 1.5,
+   "mu_target": 0.0,
+   "nlp_scaling_constr_target_gradient": 0.0,
+   "nlp_scaling_max_gradient": 100.0,
+   "nlp_scaling_min_value": 1e-08,
+   "nlp_scaling_obj_target_gradient": 0.0,
+   "obj_max_inc": 5.0,
+   "perturb_dec_fact": 0.3333333333333333,
+   "perturb_inc_fact": 8.0,
+   "perturb_inc_fact_first": 100.0,
+   "quality_function_max_section_steps": 8,
+   "quality_function_num_probe_points": 100,
+   "quality_function_section_qf_tol": 0.0,
+   "quality_function_section_sigma_tol": 0.01,
+   "resto.constr_mult_init_max": 0.0,
+   "resto.theta_max_fact": 100000000.0,
+   "resto_penalty_parameter": 1000.0,
+   "resto_proximity_weight": 1.0,
+   "s_max": 100.0,
+   "s_phi": 2.3,
+   "s_theta": 1.1,
+   "sigma_max": 100.0,
+   "sigma_min": 1e-06,
+   "slack_bound_frac": 0.01,
+   "slack_bound_push": 0.01,
+   "soc_method": 0,
+   "soft_resto_pderror_reduction_factor": 0.9999,
+   "tau_min": 0.99,
+   "theta_max_fact": 10000.0,
+   "theta_min_fact": 0.0001,
+   "tiny_step_y_tol": 0.01,
+   "tol": 1e-08,
+   "watchdog_shortened_iter_trigger": 10,
+   "watchdog_trial_iter_max": 3,
+   "eps": 2.220446049250313e-16,
+   "varphi_max": "[[1.79769313e+308]]",
+   "mu_min": 1e-11,
+   "is_square_problem": false,
+   "slack_move": 1.8189894035458565e-12,
+   "resto_failure_feasibility_threshold": 1e-06,
+   "tiny_step_tol": 2.220446049250313e-15
+  },
+  "argv": [
+   "/home/john/code/jaxipm_release/tests/rebuttal/k_fusion_profile.py",
+   "--scenario",
+   "track",
+   "--variants",
+   "1.5",
+   "--batch",
+   "250",
+   "--gpu",
+   "6"
+  ],
+  "xplane": "/home/john/code/jaxipm_release/tests/rebuttal/logs/ktrace_track_v1.5_b250/plugins/profile/2026_08_28_13_39_39/iconlab.xplane.pb"
+ }
+}

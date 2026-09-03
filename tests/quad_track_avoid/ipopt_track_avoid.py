@@ -1,5 +1,6 @@
 import time, json
 import casadi as ca
+import os
 import numpy as np
 from tests.quad_casadi_dynamics import f_ca
 from tests.quad_track_avoid.initialization import generate_random_inits, obstacles
@@ -127,7 +128,7 @@ class QuadcopterNavMPC:
         opts = {
             'ipopt.print_level': 0,
             'print_time': 0,
-            'ipopt.tol': 1e-6,
+            'ipopt.tol': float(__import__('os').environ.get('IPOPT_TOL', '1e-6')),  # rebuttal run D: IPOPT_TOL=1e-8
             'ipopt.warm_start_init_point': 'yes',
         }
         self.opti.solver('ipopt', opts)
@@ -274,7 +275,7 @@ if __name__ == "__main__":
 
     N = N_HORIZON
     Ts = TS
-    N_RUNS = tmp["N_RUNS_seq"]
+    N_RUNS = int(__import__("os").environ.get("IPOPT_N_RUNS", tmp["N_RUNS_seq"]))  # rebuttal: pool override
     DELTA_STD = float(os.environ.get("DELTA_STD", "0.5"))
 
     for AVG_VEL in tmp["avg_vel"]:
@@ -290,6 +291,7 @@ if __name__ == "__main__":
         mpc = QuadcopterNavMPC(all_x0_np[0], all_xr_np[0], N, Ts, obstacles=obstacles)
 
         X_all = np.full((N_RUNS, N, 13), np.nan, dtype=np.float64)
+        U_all = np.full((N_RUNS, N - 1, 4), np.nan, dtype=np.float64)  # rebuttal run H: inputs for c(z)
         times = np.zeros(N_RUNS, dtype=np.float64)
         iters = np.zeros(N_RUNS, dtype=np.int32)
         obj_vals = np.full(N_RUNS, np.nan, dtype=np.float64)
@@ -313,6 +315,7 @@ if __name__ == "__main__":
                 sol = mpc.solve_cold()
                 t2 = time_mod.time()
                 X_all[i] = mpc.x_sol.T
+                U_all[i] = np.asarray(mpc.u_sol).T
                 times[i] = t2 - t1
                 try:
                     iters[i] = sol.stats().get("iter_count", -1)
@@ -344,9 +347,11 @@ if __name__ == "__main__":
 
         logs_dir = os.path.join(os.path.dirname(__file__), "logs")
         os.makedirs(logs_dir, exist_ok=True)
-        out_path = os.path.join(logs_dir, f"casadi_v{AVG_VEL:.1f}_results.npz")
+        out_path = os.path.join(logs_dir, f"casadi_v{AVG_VEL:.1f}{os.environ.get('IPOPT_OUT_SUFFIX', '')}_results.npz")
         np.savez(
             out_path,
+            U_all=U_all, ipopt_tol=np.array([float(os.environ.get("IPOPT_TOL", "1e-6"))]),
+            loadavg_at_save=np.array(os.getloadavg()),
             X_all=X_all,
             times=times,
             iters=iters,

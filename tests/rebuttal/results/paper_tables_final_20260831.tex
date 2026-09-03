@@ -1,0 +1,87 @@
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+Solver & solves/s & \added{\makecell{equiv.\\instances}} & \added{\makecell{succ\\ (\%)}} & cost & \makecell{iters\\ \added{mean/max}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$90^\circ$ sector}} \\
+IPOPT-default & \added{6.61\,$\pm$\,0.39} & \added{1.00} & \added{100} & \added{517.0\,$\pm$\,20.3} & \added{23.9 / 74} \\
+IPOPT-64 & \added{280.7\,$\pm$\,13.9} & \added{42.4} & \added{100} & \added{517.0\,$\pm$\,20.3} & \added{23.9 / 74} \\
+MadNLP & \added{2.25\,$\pm$\,0.28} & \added{0.34} & \added{100} & \added{517.0\,$\pm$\,20.3} & \added{43.3 / 125} \\
+\textbf{jaxipm-SL} & \textbf{\added{14.86\,$\pm$\,0.96}} & \textbf{\added{2.25}} & \textbf{\added{99.9}} & \textbf{\added{517.1\,$\pm$\,20.3}} & \textbf{\added{69.0 / 487}} \\
+\textbf{jaxipm-IL} & \textbf{\added{89.03\,$\pm$\,1.87}} & \textbf{\added{13.5}} & \textbf{\added{100}} & \textbf{\added{518.0\,$\pm$\,20.8}} & \textbf{\added{55.9 / 274}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$180^\circ$ sector}} \\
+IPOPT-default & \added{6.99\,$\pm$\,0.28} & \added{1.00} & \added{100} & \added{507.6\,$\pm$\,17.1} & \added{21.5 / 71} \\
+IPOPT-64 & \added{310.9\,$\pm$\,14.8} & \added{44.5} & \added{100} & \added{507.6\,$\pm$\,17.1} & \added{21.5 / 71} \\
+MadNLP & \added{2.74\,$\pm$\,0.02} & \added{0.39} & \added{100} & \added{507.6\,$\pm$\,17.2} & \added{32.2 / 184} \\
+\textbf{jaxipm-SL} & \textbf{\added{14.08\,$\pm$\,1.12}} & \textbf{\added{2.01}} & \textbf{\added{99.55}} & \textbf{\added{507.6\,$\pm$\,17.2}} & \textbf{\added{71.6 / 468}} \\
+\textbf{jaxipm-IL} & \textbf{\added{95.45\,$\pm$\,1.24}} & \textbf{\added{13.7}} & \textbf{\added{100}} & \textbf{\added{507.6\,$\pm$\,16.5}} & \textbf{\added{51.9 / 252}} \\
+\bottomrule
+\end{tabular}}
+\caption{\small We demonstrate our solver's throughput advantage over IPOPT in terms of solves per second. We also note the average final cost function value and iteration count of every optimization to demonstrate that the quality of our solutions is comparable with baselines in batch, and we do not require excessive iterations to achieve them.}
+\label{tab:nav-throughput}
+\end{table}
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+Solver & solves/s & \added{\makecell{equiv.\\instances}} & \added{\makecell{succ\\ (\%)}} & cost & \makecell{iters\\ \added{mean/max}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 1.0$ m/s}} \\
+IPOPT-default & \added{6.06\,$\pm$\,0.30} & \added{1.00} & \added{100} & \added{265.7\,$\pm$\,98.7} & \added{25.4 / 77} \\
+IPOPT-64 & \added{234.7\,$\pm$\,9.5} & \added{38.7} & \added{100} & \added{265.7\,$\pm$\,98.7} & \added{25.4 / 77} \\
+MadNLP & \added{2.97\,$\pm$\,0.99} & \added{0.49} & \added{100} & \added{261.7\,$\pm$\,92.0} & \added{38.0 / 84} \\
+\textbf{jaxipm-SL} & \textbf{\added{13.00\,$\pm$\,0.71}} & \textbf{\added{2.15}} & \textbf{\added{99.2}} & \textbf{\added{249.8\,$\pm$\,79.4}} & \textbf{\added{54.2 / 472}} \\
+\textbf{jaxipm-IL} & \textbf{\added{92.49\,$\pm$\,0.37}} & \textbf{\added{15.3}} & \textbf{\added{100}} & \textbf{\added{244.0\,$\pm$\,76.3}} & \textbf{\added{43.1 / 181}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 1.5$ m/s}} \\
+IPOPT-default & \added{4.61\,$\pm$\,0.27} & \added{1.00} & \added{100} & \added{556.7\,$\pm$\,140.9} & \added{30.3 / 71} \\
+IPOPT-64 & \added{185.4\,$\pm$\,3.8} & \added{40.2} & \added{100} & \added{556.7\,$\pm$\,140.9} & \added{30.3 / 71} \\
+MadNLP & \added{2.02\,$\pm$\,0.01} & \added{0.44} & \added{100} & \added{555.8\,$\pm$\,138.3} & \added{47.4 / 116} \\
+\textbf{jaxipm-SL} & \textbf{\added{11.85\,$\pm$\,0.07}} & \textbf{\added{2.57}} & \textbf{\added{96.2}} & \textbf{\added{543.2\,$\pm$\,126.5}} & \textbf{\added{54.3 / 494}} \\
+\textbf{jaxipm-IL} & \textbf{\added{81.76\,$\pm$\,0.37}} & \textbf{\added{17.7}} & \textbf{\added{100}} & \textbf{\added{539.2\,$\pm$\,121.4}} & \textbf{\added{44.4 / 237}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{$\bar{v} = 2.0$ m/s}} \\
+IPOPT-default & \added{2.55\,$\pm$\,0.14} & \added{1.00} & \added{100} & \added{1146.7\,$\pm$\,126.9} & \added{47.8 / 125} \\
+IPOPT-64 & \added{105.4\,$\pm$\,3.7} & \added{41.3} & \added{100} & \added{1146.7\,$\pm$\,126.9} & \added{47.8 / 125} \\
+MadNLP & \added{1.65\,$\pm$\,0.00} & \added{0.65} & \added{100} & \added{1147.5\,$\pm$\,121.2} & \added{57.8 / 136} \\
+\textbf{jaxipm-SL} & \textbf{\added{11.32\,$\pm$\,0.22}} & \textbf{\added{4.44}} & \textbf{\added{86.1}} & \textbf{\added{1140.5\,$\pm$\,125.3}} & \textbf{\added{46.9 / 165}} \\
+\textbf{jaxipm-IL} & \textbf{\added{73.71\,$\pm$\,0.87}} & \textbf{\added{28.9}} & \textbf{\added{100}} & \textbf{\added{1142.4\,$\pm$\,131.5}} & \textbf{\added{45.8 / 129}} \\
+\bottomrule
+\end{tabular}}
+\caption{\small Per-solve throughput and solution quality on the quadrotor reference-tracking problem with three time-varying obstacles. We control difficulty by varying the average velocity $\bar{v}$ of the reference trajectory. Columns as in Table~\ref{tab:nav-throughput}.}
+\label{tab:track-avoid-throughput}
+\end{table}
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2.5pt}
+{\scriptsize
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+Solver & solves/s & \added{\makecell{equiv.\\instances}} & \added{\makecell{succ\\ (\%)}} & cost & \makecell{iters\\ \added{mean/max}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{2 quadrotors}} \\
+IPOPT-default & \added{0.578\,$\pm$\,0.018} & \added{1.00} & \added{100} & \added{755.5\,$\pm$\,0.8} & \added{112.6 / 135} \\
+IPOPT-64 & \added{26.38\,$\pm$\,0.98} & \added{45.6} & \added{100} & \added{755.5\,$\pm$\,0.8} & \added{112.7 / 135} \\
+MadNLP & \added{1.07\,$\pm$\,0.14} & \added{1.84} & \added{100} & \added{755.5\,$\pm$\,0.8} & \added{127.7 / 162} \\
+\textbf{jaxipm-SL} & \textbf{\added{17.31\,$\pm$\,0.46}} & \textbf{\added{29.9}} & \textbf{\added{100}} & \textbf{\added{755.5\,$\pm$\,0.8}} & \textbf{\added{115.7 / 176}} \\
+\textbf{jaxipm-IL} & \textbf{\added{18.42\,$\pm$\,0.20}} & \textbf{\added{31.8}} & \textbf{\added{100}} & \textbf{\added{755.5\,$\pm$\,0.8}} & \textbf{\added{113.6 / 182}} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{4 quadrotors}} \\
+IPOPT-default & \added{0.289\,$\pm$\,0.008} & \added{1.00} & \added{100} & \added{1529.7\,$\pm$\,4.7} & \added{95.5 / 159} \\
+IPOPT-64 & \added{13.99\,$\pm$\,0.13} & \added{48.4} & \added{100} & \added{1529.7\,$\pm$\,4.7} & \added{93.3 / 140} \\
+MadNLP & \added{0.596\,$\pm$\,0.008} & \added{2.06} & \added{100} & \added{1529.7\,$\pm$\,4.7} & \added{184.1 / 217} \\
+\textbf{jaxipm-SL} & \textbf{\added{2.62\,$\pm$\,0.03}} & \textbf{\added{9.06}} & \textbf{\added{95}} & \textbf{\added{1533.9\,$\pm$\,8.3}} & \textbf{\added{241.7 / 498}} \\
+\textbf{jaxipm-IL} & \textbf{\added{4.54\,$\pm$\,0.05}} & \textbf{\added{15.7}} & \textbf{\added{100}} & \textbf{\added{1533.7\,$\pm$\,8.9}} & \textbf{\added{227.3 / 484}} \\
+\bottomrule
+\end{tabular}}
+\caption{\small Per-solve throughput and solution quality on the multi-quadrotor consensus problem, where every quadrotor maintains a minimum separation from every other in the fleet. \added{Start and goal formations of every instance are rotated independently within $\pm5^\circ$ of the nominal antipodal configuration (75-instance pool).} Columns as in Table~\ref{tab:nav-throughput}.}
+\label{tab:multi-swap-throughput}
+\end{table}
