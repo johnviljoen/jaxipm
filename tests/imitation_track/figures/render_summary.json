@@ -1,0 +1,20 @@
+{
+  "student": {
+    "success": 24,
+    "finite": 32,
+    "n": 32,
+    "err_tol": 1.0,
+    "median_rms_tail": 0.6173664342037647,
+    "max_rms_tail": 1.0739624885890253,
+    "min_clearance": 0.02407161837148264
+  },
+  "expert": {
+    "success": 32,
+    "finite": 32,
+    "n": 32,
+    "err_tol": 1.0,
+    "median_rms_tail": 0.5117274960327973,
+    "max_rms_tail": 0.922650158300213,
+    "min_clearance": 0.09995239990916938
+  }
+}

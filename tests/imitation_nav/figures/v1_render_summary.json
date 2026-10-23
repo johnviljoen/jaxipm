@@ -1,0 +1,18 @@
+{
+  "student": {
+    "success": 16,
+    "reached": 31,
+    "n": 32,
+    "median_final_dist": 0.10009738281278402,
+    "max_final_dist": 0.8224034388421632,
+    "min_clearance": -0.6112029241048722
+  },
+  "expert": {
+    "success": 32,
+    "reached": 32,
+    "n": 32,
+    "median_final_dist": 0.09847661319274009,
+    "max_final_dist": 0.1389291357342902,
+    "min_clearance": 0.1079603888808609
+  }
+}
